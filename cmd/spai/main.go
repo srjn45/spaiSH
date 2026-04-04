@@ -1,0 +1,208 @@
+package main
+
+import (
+	"bufio"
+	"flag"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"spaios/internal/permissions"
+	"spaios/internal/protocol"
+	"spaios/internal/socket"
+)
+
+const disclaimer = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  spaiOS — experimental personal project
+  Not affiliated with any AI provider or Linux distribution.
+  You are responsible for your API key usage and costs.
+  Run 'spai --legal' for full disclaimer and license.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`
+
+const legalText = `spaiOS is an experimental personal project provided AS IS with no warranties.
+
+You are responsible for all actions taken on your system. Every command is
+shown to you before execution and requires your confirmation.
+
+You must supply your own API key for any cloud AI provider. spaiOS does not
+provide API access and is not affiliated with any AI provider or Linux distribution.
+
+Full license: Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0
+`
+
+func dataDir() string {
+	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
+		return filepath.Join(d, "spaios")
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "spaios")
+}
+
+func sockPath() string  { return filepath.Join(dataDir(), "spaid.sock") }
+func stampPath() string { return filepath.Join(dataDir(), ".first_run_done") }
+
+func daemonBin() string {
+	self, _ := os.Executable()
+	return filepath.Join(filepath.Dir(self), "spaid")
+}
+
+func showDisclaimer() {
+	if _, err := os.Stat(stampPath()); err == nil {
+		return
+	}
+	fmt.Print(disclaimer)
+	os.MkdirAll(dataDir(), 0700)
+	os.WriteFile(stampPath(), []byte("done"), 0600)
+}
+
+func gitBranch() string {
+	out, err := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func main() {
+	dryRun := flag.Bool("dry-run", false, "show plan without executing")
+	forceLocal := flag.Bool("local", false, "force local model")
+	legal := flag.Bool("legal", false, "print legal disclaimer and exit")
+	flag.Usage = func() {
+		fmt.Println("Usage: spai [flags] <query>")
+		fmt.Println("       spai !!          analyse last failed command")
+		fmt.Println()
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+
+	if *legal {
+		fmt.Print(legalText)
+		os.Exit(0)
+	}
+
+	args := flag.Args()
+	if len(args) == 0 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	query := strings.Join(args, " ")
+	if query == "!!" {
+		query = "My last command failed. What went wrong and how do I fix it?"
+	}
+
+	showDisclaimer()
+
+	// Auto-start daemon if not running
+	if err := socket.EnsureRunning(sockPath(), daemonBin()); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	cwd, _ := os.Getwd()
+	req := &protocol.Request{
+		Type:       "query",
+		Query:      query,
+		WorkingDir: cwd,
+		GitBranch:  gitBranch(),
+		ForceLocal: *forceLocal,
+		DryRun:     *dryRun,
+	}
+
+	client := socket.NewClient(sockPath())
+
+	var plan []protocol.CommandItem
+	fmt.Println()
+
+	err := client.Send(req, func(resp protocol.Response) error {
+		switch resp.Type {
+		case "text":
+			fmt.Print(resp.Content)
+		case "plan":
+			plan = resp.Plan
+		case "error":
+			fmt.Fprintf(os.Stderr, "\nerror: %s\n", resp.Content)
+		}
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println()
+
+	if len(plan) == 0 || *dryRun {
+		if *dryRun && len(plan) > 0 {
+			fmt.Println("\n[dry-run] Would run:")
+			for _, item := range plan {
+				fmt.Printf("  [%s] %s\n", item.Display, item.Command)
+			}
+		}
+		return
+	}
+
+	// Show plan and ask for confirmation
+	fmt.Println("\nI will run:")
+	for _, item := range plan {
+		fmt.Printf("  [%s] %s\n", item.Display, item.Command)
+	}
+
+	confirmed := confirmPlan(plan)
+	if confirmed == nil {
+		fmt.Println("Cancelled.")
+		return
+	}
+
+	execReq := &protocol.Request{
+		Type:     "execute",
+		Commands: confirmed,
+	}
+
+	fmt.Println()
+	client.Send(execReq, func(resp protocol.Response) error {
+		switch resp.Type {
+		case "output":
+			fmt.Print(resp.Content)
+		case "error":
+			fmt.Fprintf(os.Stderr, "error: %s\n", resp.Content)
+		}
+		return nil
+	})
+}
+
+// confirmPlan prompts the user for confirmation.
+// Returns the list of commands to run, or nil if cancelled.
+func confirmPlan(plan []protocol.CommandItem) []string {
+	reader := bufio.NewReader(os.Stdin)
+
+	// Destructive commands require individual hard confirmation
+	for _, item := range plan {
+		if item.Tier == permissions.TierDestructive.String() {
+			fmt.Printf("\n⚠  DESTRUCTIVE — cannot be undone:\n   %s\n", item.Command)
+			fmt.Print("Type YES to confirm this specific command: ")
+			input, _ := reader.ReadString('\n')
+			if strings.TrimSpace(input) != "YES" {
+				return nil
+			}
+		}
+	}
+
+	// Single confirmation for all remaining commands
+	fmt.Print("\nApply? [y/n]: ")
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(strings.ToLower(input))
+	if input != "y" && input != "yes" {
+		return nil
+	}
+
+	cmds := make([]string, len(plan))
+	for i, item := range plan {
+		cmds[i] = item.Command
+	}
+	return cmds
+}
