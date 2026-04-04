@@ -14,9 +14,12 @@ type QueryHandler func(req *protocol.Request, enc *json.Encoder)
 // ExecHandler processes an execute request and writes Response chunks to enc.
 type ExecHandler func(req *protocol.Request, enc *json.Encoder)
 
+// LLMHandler processes an llm management request and writes Response chunks to enc.
+type LLMHandler func(req *protocol.Request, enc *json.Encoder)
+
 // Serve starts a Unix domain socket server at sockPath.
 // Blocks until the listener is closed or an unrecoverable error occurs.
-func Serve(sockPath string, onQuery QueryHandler, onExec ExecHandler) error {
+func Serve(sockPath string, onQuery QueryHandler, onExec ExecHandler, onLLM LLMHandler) error {
 	os.Remove(sockPath)
 	os.MkdirAll(sockPath[:len(sockPath)-len("/spaid.sock")], 0700)
 
@@ -29,14 +32,13 @@ func Serve(sockPath string, onQuery QueryHandler, onExec ExecHandler) error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			// ln was closed — normal shutdown
 			return nil
 		}
-		go handleConn(conn, onQuery, onExec)
+		go handleConn(conn, onQuery, onExec, onLLM)
 	}
 }
 
-func handleConn(conn net.Conn, onQuery QueryHandler, onExec ExecHandler) {
+func handleConn(conn net.Conn, onQuery QueryHandler, onExec ExecHandler, onLLM LLMHandler) {
 	defer conn.Close()
 
 	var req protocol.Request
@@ -50,6 +52,8 @@ func handleConn(conn net.Conn, onQuery QueryHandler, onExec ExecHandler) {
 		onQuery(&req, enc)
 	case "execute":
 		onExec(&req, enc)
+	case "llm":
+		onLLM(&req, enc)
 	default:
 		enc.Encode(protocol.Response{Type: "error", Content: "unknown request type: " + req.Type})
 	}

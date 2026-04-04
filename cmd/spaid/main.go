@@ -14,6 +14,7 @@ import (
 	"spaios/internal/ai"
 	"spaios/internal/config"
 	"spaios/internal/executor"
+	"spaios/internal/llm"
 	"spaios/internal/protocol"
 	"spaios/internal/router"
 	"spaios/internal/session"
@@ -60,6 +61,13 @@ func main() {
 		sess, _ = session.LoadFrom(session.DefaultPath())
 	}
 
+	llmState, err := llm.LoadState(llm.DefaultStatePath())
+	if err != nil {
+		log.Printf("llm state load warning: %v — using defaults", err)
+		llmState, _ = llm.LoadState(llm.DefaultStatePath())
+	}
+	llmMgr := llm.NewManager(llmState)
+
 	sock := sockPath()
 	log.Printf("spaid starting, socket: %s", sock)
 
@@ -103,7 +111,18 @@ func main() {
 		enc.Encode(protocol.Response{Type: "done"})
 	}
 
-	if err := socket.Serve(sock, onQuery, onExec); err != nil {
+	onLLM := func(req *protocol.Request, enc *json.Encoder) {
+		if req.LLM == nil {
+			enc.Encode(protocol.Response{Type: "error", Content: "missing llm payload"})
+			enc.Encode(protocol.Response{Type: "done"})
+			return
+		}
+		for resp := range llmMgr.Handle(req.LLM) {
+			enc.Encode(resp)
+		}
+	}
+
+	if err := socket.Serve(sock, onQuery, onExec, onLLM); err != nil {
 		log.Fatalf("socket error: %v", err)
 	}
 }
