@@ -67,7 +67,97 @@ func gitBranch() string {
 	return strings.TrimSpace(string(out))
 }
 
+// handleLLMCommand handles `spai llm <cmd> [args...]`.
+// It sends an "llm" typed request to spaid and streams the response.
+func handleLLMCommand(args []string) {
+	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
+		fmt.Println("Usage: spai llm <command> [args]")
+		fmt.Println()
+		fmt.Println("Commands:")
+		fmt.Println("  status          show runtime and model status")
+		fmt.Println("  install         install Ollama on this machine")
+		fmt.Println("  list            list installed and recommended models")
+		fmt.Println("  pull <model>    download a model (e.g. qwen2.5-coder:7b)")
+		fmt.Println("  use <model>     set the active model for local inference")
+		os.Exit(0)
+	}
+
+	showDisclaimer()
+
+	if err := socket.EnsureRunning(sockPath(), daemonBin()); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	req := &protocol.Request{
+		Type: "llm",
+		LLM: &protocol.LLMRequest{
+			Command: args[0],
+			Args:    args[1:],
+		},
+	}
+
+	client := socket.NewClient(sockPath())
+	fmt.Println()
+
+	var plan []protocol.CommandItem
+	err := client.Send(req, func(resp protocol.Response) error {
+		switch resp.Type {
+		case "text":
+			fmt.Print(resp.Content)
+		case "plan":
+			plan = resp.Plan
+		case "error":
+			fmt.Fprintf(os.Stderr, "\nerror: %s\n", resp.Content)
+		}
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println()
+
+	if len(plan) == 0 {
+		return
+	}
+
+	// Reuse existing confirmation flow for install/pull commands
+	fmt.Println("I will run:")
+	for _, item := range plan {
+		fmt.Printf("  [%s] %s\n", item.Display, item.Command)
+	}
+
+	confirmed := confirmPlan(plan)
+	if confirmed == nil {
+		fmt.Println("Cancelled.")
+		return
+	}
+
+	execReq := &protocol.Request{
+		Type:     "execute",
+		Commands: confirmed,
+	}
+	fmt.Println()
+	client.Send(execReq, func(resp protocol.Response) error {
+		switch resp.Type {
+		case "output":
+			fmt.Print(resp.Content)
+		case "error":
+			fmt.Fprintf(os.Stderr, "error: %s\n", resp.Content)
+		}
+		return nil
+	})
+}
+
 func main() {
+	// Handle `spai llm <cmd>` before flag parsing so flags don't interfere.
+	if len(os.Args) >= 2 && os.Args[1] == "llm" {
+		handleLLMCommand(os.Args[2:])
+		return
+	}
+
 	dryRun := flag.Bool("dry-run", false, "show plan without executing")
 	forceLocal := flag.Bool("local", false, "force local model")
 	legal := flag.Bool("legal", false, "print legal disclaimer and exit")
