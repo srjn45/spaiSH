@@ -83,8 +83,20 @@ Rules:
 4. If a previous command failed, diagnose why and propose a fix.
 5. Never use interactive commands (vim, nano, top) — use non-interactive alternatives.`
 
+// send writes resp to ch, returning false if ctx is cancelled first.
+func send(ctx context.Context, ch chan<- protocol.Response, resp protocol.Response) bool {
+	select {
+	case ch <- resp:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 // Run starts the agent loop and returns a channel of Response chunks.
 // The channel is closed when the loop ends. The last response always has Type "done".
+// Session persistence is the caller's responsibility — the agent reads session history
+// via sess.MessagesForPrompt() but does not call sess.AddExchange or sess.Save.
 func (a *Agent) Run(ctx context.Context, req *protocol.AgentRequest, sess *session.Session) <-chan protocol.Response {
 	ch := make(chan protocol.Response, 16)
 	go func() {
@@ -115,21 +127,25 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 
 	for iter := 0; iter < maxIter; iter++ {
 		if verbose && iter > 0 {
-			ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("\n── iteration %d/%d ──\n", iter+1, maxIter)}
+			if !send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("\n── iteration %d/%d ──\n", iter+1, maxIter)}) {
+				return
+			}
 		}
 
 		// Call AI
 		textCh, err := a.provider.Complete(ctx, messages)
 		if err != nil {
-			ch <- protocol.Response{Type: "error", Content: fmt.Sprintf("AI error: %v", err)}
-			ch <- protocol.Response{Type: "done"}
+			send(ctx, ch, protocol.Response{Type: "error", Content: fmt.Sprintf("AI error: %v", err)})
+			send(ctx, ch, protocol.Response{Type: "done"})
 			return
 		}
 
 		var fullText strings.Builder
 		for chunk := range textCh {
 			fullText.WriteString(chunk)
-			ch <- protocol.Response{Type: "text", Content: chunk}
+			if !send(ctx, ch, protocol.Response{Type: "text", Content: chunk}) {
+				return
+			}
 		}
 
 		aiText := fullText.String()
@@ -137,7 +153,7 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 
 		// No commands = goal achieved
 		if len(commands) == 0 {
-			ch <- protocol.Response{Type: "done"}
+			send(ctx, ch, protocol.Response{Type: "done"})
 			return
 		}
 
@@ -159,23 +175,29 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 					Iteration: iter + 1,
 				})
 				if !approved {
-					ch <- protocol.Response{Type: "text", Content: "\nCancelled by user.\n"}
-					ch <- protocol.Response{Type: "done"}
+					send(ctx, ch, protocol.Response{Type: "text", Content: "\nCancelled by user.\n"})
+					send(ctx, ch, protocol.Response{Type: "done"})
 					return
 				}
 			}
 
 			if verbose {
-				ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("▶ [%s] %s\n", tier.Display(), cmd)}
+				if !send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("▶ [%s] %s\n", tier.Display(), cmd)}) {
+					return
+				}
 			} else {
-				ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("▶ %s\n", cmd)}
+				if !send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("▶ %s\n", cmd)}) {
+					return
+				}
 			}
 
 			output, exitCode := a.execFn(ctx, cmd)
 			allOutput.WriteString(fmt.Sprintf("$ %s\n%s\n", cmd, output))
 
 			if exitCode != 0 || verbose {
-				ch <- protocol.Response{Type: "output", Content: output}
+				if !send(ctx, ch, protocol.Response{Type: "output", Content: output}) {
+					return
+				}
 			}
 
 			if exitCode != 0 {
@@ -207,8 +229,8 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 	}
 
 	// max_iterations reached
-	ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("\nReached iteration limit (%d). Here is where things stand.\n", maxIter)}
-	ch <- protocol.Response{Type: "done"}
+	send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("\nReached iteration limit (%d). Here is where things stand.\n", maxIter)})
+	send(ctx, ch, protocol.Response{Type: "done"})
 }
 
 func parseCommands(text string) []string {
