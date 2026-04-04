@@ -51,8 +51,22 @@ func main() {
 		log.Fatalf("config error: %v", err)
 	}
 
+	llmState, err := llm.LoadState(llm.DefaultStatePath())
+	if err != nil {
+		log.Printf("llm state load warning: %v — using defaults", err)
+		llmState, _ = llm.LoadState(llm.DefaultStatePath())
+	}
+	llmMgr := llm.NewManager(llmState)
+
+	// Prefer the active model from llm-state over the config value.
+	// This lets `spai llm use <model>` take effect after a daemon restart.
+	localModel := cfg.Local.LocalModel
+	if llmState.ActiveModel != "" {
+		localModel = llmState.ActiveModel
+	}
+
 	cloud := ai.NewCloudProvider(cfg.Provider.Endpoint, cfg.APIKey(), cfg.Provider.Model)
-	local := ai.NewLocalProvider(cfg.Local.OllamaEndpoint, cfg.Local.LocalModel)
+	local := ai.NewLocalProvider(cfg.Local.OllamaEndpoint, localModel)
 	rtr := router.New(cfg, cloud, local)
 
 	sess, err := session.LoadFrom(session.DefaultPath())
@@ -60,13 +74,6 @@ func main() {
 		log.Printf("session load warning: %v — starting fresh", err)
 		sess, _ = session.LoadFrom(session.DefaultPath())
 	}
-
-	llmState, err := llm.LoadState(llm.DefaultStatePath())
-	if err != nil {
-		log.Printf("llm state load warning: %v — using defaults", err)
-		llmState, _ = llm.LoadState(llm.DefaultStatePath())
-	}
-	llmMgr := llm.NewManager(llmState)
 
 	sock := sockPath()
 	log.Printf("spaid starting, socket: %s", sock)

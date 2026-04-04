@@ -206,6 +206,44 @@ func TestManagerUseUpdatesState(t *testing.T) {
 	}
 }
 
+func TestManagerRemoveReturnsPlan(t *testing.T) {
+	state := newTestState(t)
+	mgr := llm.NewManagerWithClient(state, &http.Client{}, "http://127.0.0.1:19999")
+	resps := collectResponses(mgr.Handle(&protocol.LLMRequest{
+		Command: "remove",
+		Args:    []string{"llama3.2:3b"},
+	}))
+
+	var plan []protocol.CommandItem
+	for _, r := range resps {
+		if r.Type == "plan" {
+			plan = r.Plan
+		}
+	}
+	if len(plan) != 1 {
+		t.Fatalf("expected 1 command in remove plan, got %d", len(plan))
+	}
+	if plan[0].Command != "ollama rm llama3.2:3b" {
+		t.Errorf("unexpected remove command: %q", plan[0].Command)
+	}
+}
+
+func TestManagerRemoveMissingArg(t *testing.T) {
+	state := newTestState(t)
+	mgr := llm.NewManagerWithClient(state, &http.Client{}, "http://127.0.0.1:19999")
+	resps := collectResponses(mgr.Handle(&protocol.LLMRequest{Command: "remove"}))
+
+	var hasError bool
+	for _, r := range resps {
+		if r.Type == "error" {
+			hasError = true
+		}
+	}
+	if !hasError {
+		t.Error("expected error response when remove called without args")
+	}
+}
+
 func TestManagerUnknownCommand(t *testing.T) {
 	state := newTestState(t)
 	mgr := llm.NewManagerWithClient(state, &http.Client{}, "")

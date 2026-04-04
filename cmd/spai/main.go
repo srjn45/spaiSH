@@ -78,6 +78,7 @@ func handleLLMCommand(args []string) {
 		fmt.Println("  install         install Ollama on this machine")
 		fmt.Println("  list            list installed and recommended models")
 		fmt.Println("  pull <model>    download a model (e.g. qwen2.5-coder:7b)")
+		fmt.Println("  remove <model>  delete a model from local storage")
 		fmt.Println("  use <model>     set the active model for local inference")
 		os.Exit(0)
 	}

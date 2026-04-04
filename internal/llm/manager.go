@@ -62,6 +62,8 @@ func (m *Manager) Handle(req *protocol.LLMRequest) <-chan protocol.Response {
 			m.handlePull(ch, req.Args)
 		case "use":
 			m.handleUse(ch, req.Args)
+		case "remove":
+			m.handleRemove(ch, req.Args)
 		default:
 			ch <- protocol.Response{Type: "error", Content: fmt.Sprintf("unknown llm command %q — try: status, install, list, pull, use", req.Command)}
 			ch <- protocol.Response{Type: "done"}
@@ -204,6 +206,26 @@ func (m *Manager) handlePull(ch chan<- protocol.Response, args []string) {
 	cmd := fmt.Sprintf("ollama pull %s", model)
 	tier := permissions.Classify(cmd)
 	ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("Downloading model %q from Ollama registry...\n", model)}
+	ch <- protocol.Response{
+		Type: "plan",
+		Plan: []protocol.CommandItem{{
+			Command: cmd,
+			Tier:    tier.String(),
+			Display: tier.Display(),
+		}},
+	}
+	ch <- protocol.Response{Type: "done"}
+}
+
+func (m *Manager) handleRemove(ch chan<- protocol.Response, args []string) {
+	if len(args) == 0 {
+		ch <- protocol.Response{Type: "error", Content: "usage: spai llm remove <model>\nexample: spai llm remove llama3.2:3b"}
+		ch <- protocol.Response{Type: "done"}
+		return
+	}
+	model := args[0]
+	cmd := fmt.Sprintf("ollama rm %s", model)
+	tier := permissions.Classify(cmd)
 	ch <- protocol.Response{
 		Type: "plan",
 		Plan: []protocol.CommandItem{{
