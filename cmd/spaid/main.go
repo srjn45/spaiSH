@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"spaios/internal/agent"
 	"spaios/internal/ai"
 	"spaios/internal/config"
 	"spaios/internal/executor"
@@ -129,7 +130,59 @@ func main() {
 		}
 	}
 
-	if err := socket.Serve(sock, onQuery, onExec, onLLM); err != nil {
+	onAgent := func(req *protocol.Request, enc *json.Encoder, dec *json.Decoder) {
+		if req.Agent == nil {
+			enc.Encode(protocol.Response{Type: "error", Content: "missing agent payload"})
+			enc.Encode(protocol.Response{Type: "done"})
+			return
+		}
+
+		forceLocal := req.ForceLocal || cfg.Agent.Autonomous || req.Agent.Autonomous
+		provider, err := rtr.SelectProvider(forceLocal)
+		if err != nil {
+			enc.Encode(protocol.Response{Type: "error", Content: err.Error()})
+			enc.Encode(protocol.Response{Type: "done"})
+			return
+		}
+
+		agentCfg := agent.Config{
+			Autonomous:    cfg.Agent.Autonomous || req.Agent.Autonomous,
+			MaxIterations: cfg.Agent.MaxIterations,
+			Verbose:       cfg.Agent.Verbose || req.Agent.Verbose,
+			WorkingDir:    req.WorkingDir,
+			GitBranch:     req.GitBranch,
+		}
+		if agentCfg.MaxIterations <= 0 {
+			agentCfg.MaxIterations = 5
+		}
+
+		confirmFn := func(confirmReq protocol.ConfirmRequest) bool {
+			data, err := json.Marshal(confirmReq)
+			if err != nil {
+				return false
+			}
+			enc.Encode(protocol.Response{Type: "confirm_request", Content: string(data)})
+			var reply protocol.Request
+			if err := dec.Decode(&reply); err != nil || reply.ConfirmResponse == nil {
+				return false
+			}
+			return reply.ConfirmResponse.Approved
+		}
+
+		a := agent.New(provider, agentCfg, confirmFn)
+
+		var fullText strings.Builder
+		for resp := range a.Run(context.Background(), req.Agent, sess) {
+			enc.Encode(resp)
+			if resp.Type == "text" {
+				fullText.WriteString(resp.Content)
+			}
+		}
+		sess.AddExchange(req.Agent.Query, fullText.String())
+		sess.Save()
+	}
+
+	if err := socket.Serve(sock, onQuery, onExec, onLLM, onAgent); err != nil {
 		log.Fatalf("socket error: %v", err)
 	}
 }
