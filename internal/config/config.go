@@ -12,6 +12,7 @@ type Config struct {
 	Local       LocalConfig       `toml:"local"`
 	Routing     RoutingConfig     `toml:"routing"`
 	Permissions PermissionsConfig `toml:"permissions"`
+	Agent       AgentConfig       `toml:"agent"`
 }
 
 type ProviderConfig struct {
@@ -32,6 +33,12 @@ type RoutingConfig struct {
 
 type PermissionsConfig struct {
 	SudoSessionTimeout int `toml:"sudo_session_timeout"`
+}
+
+type AgentConfig struct {
+	Autonomous    bool `toml:"autonomous"`
+	MaxIterations int  `toml:"max_iterations"`
+	Verbose       bool `toml:"verbose"`
 }
 
 // Load reads and parses the TOML config file at path.
