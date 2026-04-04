@@ -129,26 +129,13 @@ func handleLLMCommand(args []string) {
 		fmt.Printf("  [%s] %s\n", item.Display, item.Command)
 	}
 
-	confirmed := confirmPlan(plan)
-	if confirmed == nil {
+	if confirmPlan(plan) == nil {
 		fmt.Println("Cancelled.")
 		return
 	}
 
-	execReq := &protocol.Request{
-		Type:     "execute",
-		Commands: confirmed,
-	}
 	fmt.Println()
-	client.Send(execReq, func(resp protocol.Response) error {
-		switch resp.Type {
-		case "output":
-			fmt.Print(resp.Content)
-		case "error":
-			fmt.Fprintf(os.Stderr, "error: %s\n", resp.Content)
-		}
-		return nil
-	})
+	runConfirmed(plan, client)
 }
 
 func main() {
@@ -242,18 +229,45 @@ func main() {
 		fmt.Printf("  [%s] %s\n", item.Display, item.Command)
 	}
 
-	confirmed := confirmPlan(plan)
-	if confirmed == nil {
+	if confirmPlan(plan) == nil {
 		fmt.Println("Cancelled.")
+		return
+	}
+
+	fmt.Println()
+	runConfirmed(plan, client)
+}
+
+// runConfirmed executes confirmed commands after plan approval.
+// Elevated and destructive commands run directly in the terminal so sudo can
+// prompt for a password — they must not go through the socket executor which
+// has no TTY. All other commands stream through spaid as usual.
+func runConfirmed(plan []protocol.CommandItem, client *socket.Client) {
+	var socketCmds []string
+	for _, item := range plan {
+		if item.Tier == permissions.TierElevated.String() || item.Tier == permissions.TierDestructive.String() {
+			fmt.Printf("$ %s\n", item.Command)
+			cmd := exec.Command("sh", "-c", item.Command)
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "error: command failed: %v\n", err)
+				return
+			}
+		} else {
+			socketCmds = append(socketCmds, item.Command)
+		}
+	}
+
+	if len(socketCmds) == 0 {
 		return
 	}
 
 	execReq := &protocol.Request{
 		Type:     "execute",
-		Commands: confirmed,
+		Commands: socketCmds,
 	}
-
-	fmt.Println()
 	client.Send(execReq, func(resp protocol.Response) error {
 		switch resp.Type {
 		case "output":
