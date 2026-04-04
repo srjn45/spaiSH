@@ -41,7 +41,7 @@ func New(cfg *config.Config, cloud, local ai.Provider) *Router {
 // Route processes a query request and returns a channel of Response chunks.
 // Chunks: zero or more "text" chunks, one optional "plan" chunk, one "done" chunk.
 func (r *Router) Route(ctx context.Context, req *protocol.Request, sess *session.Session) (<-chan protocol.Response, error) {
-	provider, err := r.selectProvider(req.ForceLocal)
+	provider, err := r.SelectProvider(req.ForceLocal)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,9 @@ func (r *Router) Route(ctx context.Context, req *protocol.Request, sess *session
 	return respCh, nil
 }
 
-func (r *Router) selectProvider(forceLocal bool) (ai.Provider, error) {
+// SelectProvider returns the appropriate AI provider for this request.
+// Exported so the agent handler in spaid can obtain a provider directly.
+func (r *Router) SelectProvider(forceLocal bool) (ai.Provider, error) {
 	if forceLocal || r.cfg.Routing.PreferLocal {
 		if r.local.Available() {
 			return r.local, nil
