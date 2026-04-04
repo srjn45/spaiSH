@@ -17,9 +17,14 @@ type ExecHandler func(req *protocol.Request, enc *json.Encoder)
 // LLMHandler processes an llm management request and writes Response chunks to enc.
 type LLMHandler func(req *protocol.Request, enc *json.Encoder)
 
+// AgentHandler processes an agent request. It receives both enc and dec because
+// the agent loop may pause mid-stream to send a confirm_request and read back a
+// confirm_response on the same connection.
+type AgentHandler func(req *protocol.Request, enc *json.Encoder, dec *json.Decoder)
+
 // Serve starts a Unix domain socket server at sockPath.
 // Blocks until the listener is closed or an unrecoverable error occurs.
-func Serve(sockPath string, onQuery QueryHandler, onExec ExecHandler, onLLM LLMHandler) error {
+func Serve(sockPath string, onQuery QueryHandler, onExec ExecHandler, onLLM LLMHandler, onAgent AgentHandler) error {
 	os.Remove(sockPath)
 	os.MkdirAll(sockPath[:len(sockPath)-len("/spaid.sock")], 0700)
 
@@ -34,19 +39,21 @@ func Serve(sockPath string, onQuery QueryHandler, onExec ExecHandler, onLLM LLMH
 		if err != nil {
 			return nil
 		}
-		go handleConn(conn, onQuery, onExec, onLLM)
+		go handleConn(conn, onQuery, onExec, onLLM, onAgent)
 	}
 }
 
-func handleConn(conn net.Conn, onQuery QueryHandler, onExec ExecHandler, onLLM LLMHandler) {
+func handleConn(conn net.Conn, onQuery QueryHandler, onExec ExecHandler, onLLM LLMHandler, onAgent AgentHandler) {
 	defer conn.Close()
 
+	dec := json.NewDecoder(conn)
+	enc := json.NewEncoder(conn)
+
 	var req protocol.Request
-	if err := json.NewDecoder(conn).Decode(&req); err != nil {
+	if err := dec.Decode(&req); err != nil {
 		return
 	}
 
-	enc := json.NewEncoder(conn)
 	switch req.Type {
 	case "query":
 		onQuery(&req, enc)
@@ -54,6 +61,8 @@ func handleConn(conn net.Conn, onQuery QueryHandler, onExec ExecHandler, onLLM L
 		onExec(&req, enc)
 	case "llm":
 		onLLM(&req, enc)
+	case "agent":
+		onAgent(&req, enc, dec)
 	default:
 		enc.Encode(protocol.Response{Type: "error", Content: "unknown request type: " + req.Type})
 	}

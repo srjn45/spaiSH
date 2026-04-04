@@ -48,6 +48,36 @@ func (c *Client) Send(req *protocol.Request, fn func(protocol.Response) error) e
 	}
 }
 
+// SendInteractive sends req and calls fn for each Response chunk. fn receives
+// the encoder so it can write back to spaid mid-stream (used for the agent
+// confirm round-trip). Stops on "done" or "error".
+func (c *Client) SendInteractive(req *protocol.Request, fn func(protocol.Response, *json.Encoder) error) error {
+	conn, err := net.Dial("unix", c.sockPath)
+	if err != nil {
+		return fmt.Errorf("cannot reach spaid: %w", err)
+	}
+	defer conn.Close()
+
+	enc := json.NewEncoder(conn)
+	if err := enc.Encode(req); err != nil {
+		return err
+	}
+
+	dec := json.NewDecoder(conn)
+	for {
+		var resp protocol.Response
+		if err := dec.Decode(&resp); err != nil {
+			return err
+		}
+		if err := fn(resp, enc); err != nil {
+			return err
+		}
+		if resp.Type == "done" || resp.Type == "error" {
+			return nil
+		}
+	}
+}
+
 // EnsureRunning starts spaid if it is not already running, then waits up to 3s.
 func EnsureRunning(sockPath, daemonBin string) error {
 	if _, err := os.Stat(sockPath); err == nil {
