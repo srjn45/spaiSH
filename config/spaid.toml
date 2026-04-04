@@ -1,0 +1,26 @@
+# spaiOS daemon configuration
+# Copy this file to ~/.config/spaios/spaid.toml
+
+[provider]
+# Any OpenAI-compatible API endpoint
+endpoint = "https://api.anthropic.com/v1"
+# Environment variable name that holds your API key (never put the key here)
+api_key_env = "SPAI_API_KEY"
+# Model name — set to whichever model your provider offers
+model = "claude-sonnet-4-6"
+
+[local]
+# Ollama endpoint (used when no API key is set, or prefer_local = true)
+ollama_endpoint = "http://localhost:11434"
+# Local model to use via Ollama
+local_model = "qwen2.5-coder"
+
+[routing]
+# Commands that bypass AI entirely and run directly
+passthrough_commands = ["cd", "ls", "pwd", "clear", "exit", "history", "echo", "which", "env"]
+# Set to true to always use local model (full privacy mode)
+prefer_local = false
+
+[permissions]
+# Seconds before an elevated (sudo) session permission expires
+sudo_session_timeout = 300
