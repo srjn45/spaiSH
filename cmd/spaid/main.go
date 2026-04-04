@@ -156,6 +156,9 @@ func main() {
 			agentCfg.MaxIterations = 5
 		}
 
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
 		confirmFn := func(confirmReq protocol.ConfirmRequest) bool {
 			data, err := json.Marshal(confirmReq)
 			if err != nil {
@@ -172,7 +175,7 @@ func main() {
 		a := agent.New(provider, agentCfg, confirmFn)
 
 		var fullText strings.Builder
-		for resp := range a.Run(context.Background(), req.Agent, sess) {
+		for resp := range a.Run(ctx, req.Agent, sess) {
 			enc.Encode(resp)
 			if resp.Type == "text" {
 				fullText.WriteString(resp.Content)
