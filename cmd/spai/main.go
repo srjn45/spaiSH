@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,8 +69,39 @@ func gitBranch() string {
 	return strings.TrimSpace(string(out))
 }
 
+// resolveSessionID returns the session ID to use for this invocation.
+// Priority: explicit flag value > $SPAI_SESSION_ID env var > "default".
+func resolveSessionID(flagVal string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	if id := os.Getenv("SPAI_SESSION_ID"); id != "" {
+		return id
+	}
+	return "default"
+}
+
+// readStdin reads piped stdin up to 64 KB. Returns "" if stdin is a TTY.
+// Appends "[truncated]" if the input exceeded the size cap.
+func readStdin() string {
+	info, err := os.Stdin.Stat()
+	if err != nil || info.Mode()&os.ModeCharDevice != 0 {
+		return ""
+	}
+	const maxBytes = 64 * 1024
+	r := io.LimitReader(os.Stdin, int64(maxBytes)+1)
+	data, err := io.ReadAll(r)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to read stdin: %v\n", err)
+		return ""
+	}
+	if len(data) > maxBytes {
+		return string(data[:maxBytes]) + "[truncated]"
+	}
+	return string(data)
+}
+
 // handleLLMCommand handles `spai llm <cmd> [args...]`.
-// It sends an "llm" typed request to spaid and streams the response.
 func handleLLMCommand(args []string) {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
 		fmt.Println("Usage: spai llm <command> [args]")
@@ -125,7 +157,6 @@ func handleLLMCommand(args []string) {
 		return
 	}
 
-	// Reuse existing confirmation flow for install/pull commands
 	fmt.Println("I will run:")
 	for _, item := range plan {
 		fmt.Printf("  [%s] %s\n", item.Display, item.Command)
@@ -140,11 +171,100 @@ func handleLLMCommand(args []string) {
 	runConfirmed(plan, client)
 }
 
+// handleClearCommand handles `spai clear [--lines N] [--session <id>]`.
+func handleClearCommand(args []string) {
+	fs := flag.NewFlagSet("clear", flag.ExitOnError)
+	lines := fs.Int("lines", 0, "keep only the last N messages (default: clear all)")
+	sessionFlag := fs.String("session", "", "named session (default: $SPAI_SESSION_ID or 'default')")
+	fs.Parse(args)
+
+	showDisclaimer()
+
+	if err := socket.EnsureRunning(sockPath(), daemonBin()); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	req := &protocol.Request{
+		Type:      "session",
+		SessionID: resolveSessionID(*sessionFlag),
+		Session: &protocol.SessionRequest{
+			Command: "clear",
+			Lines:   *lines,
+		},
+	}
+
+	client := socket.NewClient(sockPath())
+	fmt.Println()
+
+	if err := client.Send(req, func(resp protocol.Response) error {
+		switch resp.Type {
+		case "text":
+			fmt.Print(resp.Content)
+		case "error":
+			fmt.Fprintf(os.Stderr, "error: %s\n", resp.Content)
+		}
+		return nil
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println()
+}
+
+// handleCompactCommand handles `spai compact [--session <id>]`.
+func handleCompactCommand(args []string) {
+	fs := flag.NewFlagSet("compact", flag.ExitOnError)
+	sessionFlag := fs.String("session", "", "named session (default: $SPAI_SESSION_ID or 'default')")
+	fs.Parse(args)
+
+	showDisclaimer()
+
+	if err := socket.EnsureRunning(sockPath(), daemonBin()); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	req := &protocol.Request{
+		Type:      "session",
+		SessionID: resolveSessionID(*sessionFlag),
+		Session: &protocol.SessionRequest{
+			Command: "compact",
+		},
+	}
+
+	client := socket.NewClient(sockPath())
+	fmt.Println()
+
+	if err := client.Send(req, func(resp protocol.Response) error {
+		switch resp.Type {
+		case "text":
+			fmt.Print(resp.Content)
+		case "error":
+			fmt.Fprintf(os.Stderr, "error: %s\n", resp.Content)
+		}
+		return nil
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println()
+}
+
 func main() {
-	// Handle `spai llm <cmd>` before flag parsing so flags don't interfere.
-	if len(os.Args) >= 2 && os.Args[1] == "llm" {
-		handleLLMCommand(os.Args[2:])
-		return
+	// Handle subcommands before flag parsing so flags don't interfere.
+	if len(os.Args) >= 2 {
+		switch os.Args[1] {
+		case "llm":
+			handleLLMCommand(os.Args[2:])
+			return
+		case "clear":
+			handleClearCommand(os.Args[2:])
+			return
+		case "compact":
+			handleCompactCommand(os.Args[2:])
+			return
+		}
 	}
 
 	dryRun := flag.Bool("dry-run", false, "show plan without executing")
@@ -152,9 +272,12 @@ func main() {
 	verbose := flag.Bool("verbose", false, "show full command output and iteration details")
 	autonomous := flag.Bool("autonomous", false, "run all commands without confirmation prompts")
 	legal := flag.Bool("legal", false, "print legal disclaimer and exit")
+	sessionFlag := flag.String("session", "", "named session (default: $SPAI_SESSION_ID or 'default')")
 	flag.Usage = func() {
 		fmt.Println("Usage: spai [flags] <query>")
-		fmt.Println("       spai !!          analyse last failed command")
+		fmt.Println("       spai !!               analyse last failed command")
+		fmt.Println("       spai clear [--lines N] wipe session or keep latest N messages")
+		fmt.Println("       spai compact           AI-summarise session history")
 		fmt.Println()
 		flag.PrintDefaults()
 	}
@@ -176,6 +299,8 @@ func main() {
 		query = "My last command failed. What went wrong and how do I fix it?"
 	}
 
+	stdin := readStdin()
+
 	showDisclaimer()
 
 	if err := socket.EnsureRunning(sockPath(), daemonBin()); err != nil {
@@ -186,6 +311,8 @@ func main() {
 	cwd, _ := os.Getwd()
 	req := &protocol.Request{
 		Type:       "agent",
+		SessionID:  resolveSessionID(*sessionFlag),
+		Stdin:      stdin,
 		WorkingDir: cwd,
 		GitBranch:  gitBranch(),
 		ForceLocal: *forceLocal,
@@ -230,9 +357,6 @@ func main() {
 }
 
 // runConfirmed executes confirmed commands after plan approval.
-// Elevated and destructive commands run directly in the terminal so sudo can
-// prompt for a password — they must not go through the socket executor which
-// has no TTY. All other commands stream through spaid as usual.
 func runConfirmed(plan []protocol.CommandItem, client *socket.Client) {
 	var socketCmds []string
 	for _, item := range plan {
@@ -273,7 +397,6 @@ func runConfirmed(plan []protocol.CommandItem, client *socket.Client) {
 }
 
 // confirmSingle prompts the user to approve or deny a single command.
-// Used by the agent flow for mid-loop tier-gated confirmation.
 func confirmSingle(req protocol.ConfirmRequest) bool {
 	reader := bufio.NewReader(os.Stdin)
 	switch req.Tier {
@@ -293,12 +416,10 @@ func confirmSingle(req protocol.ConfirmRequest) bool {
 	return input == "y" || input == "yes"
 }
 
-// confirmPlan prompts the user for confirmation.
-// Returns the list of commands to run, or nil if cancelled.
+// confirmPlan prompts the user for confirmation of a batch plan.
 func confirmPlan(plan []protocol.CommandItem) []string {
 	reader := bufio.NewReader(os.Stdin)
 
-	// Destructive commands require individual hard confirmation
 	for _, item := range plan {
 		if item.Tier == permissions.TierDestructive.String() {
 			fmt.Printf("\n⚠  DESTRUCTIVE — cannot be undone:\n   %s\n", item.Command)
@@ -310,7 +431,6 @@ func confirmPlan(plan []protocol.CommandItem) []string {
 		}
 	}
 
-	// Single confirmation for all remaining commands
 	fmt.Print("\nApply? [y/n]: ")
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(strings.ToLower(input))
