@@ -60,6 +60,20 @@ func failExec(_ context.Context, _ string) (string, int) {
 	return "permission denied\n", 1
 }
 
+// capturingMockProvider records the first call's message slice.
+type capturingMockProvider struct {
+	mockProvider
+	lastMessages []ai.Message
+}
+
+func (c *capturingMockProvider) Available() bool { return true }
+func (c *capturingMockProvider) Complete(ctx context.Context, msgs []ai.Message) (<-chan string, error) {
+	if c.lastMessages == nil {
+		c.lastMessages = append([]ai.Message(nil), msgs...)
+	}
+	return c.mockProvider.Complete(ctx, msgs)
+}
+
 func TestAgentNoCommandsOnFirstTry(t *testing.T) {
 	// AI returns no bash block — goal immediately achieved.
 	p := &mockProvider{responses: []string{"Done, no commands needed."}}
@@ -218,5 +232,41 @@ func TestAgentVerboseIncludesIterationHeader(t *testing.T) {
 	}
 	if !strings.Contains(text, "iteration") {
 		t.Errorf("expected iteration header in verbose mode, got: %q", text)
+	}
+}
+
+func TestAgentInjectsStdinBeforeQuery(t *testing.T) {
+	p := &capturingMockProvider{
+		mockProvider: mockProvider{responses: []string{"Done, no commands needed."}},
+	}
+
+	cfg := agent.Config{
+		MaxIterations: 3,
+		Stdin:         "total 42\nfoo.go  bar.go\n",
+	}
+	a := agent.NewWithExec(p, cfg, alwaysApprove, successExec)
+	collectResponses(a.Run(context.Background(), &protocol.AgentRequest{Query: "explain this"}, newSession(t)))
+
+	capturedMessages := p.lastMessages
+	var pipedIdx, queryIdx int = -1, -1
+	for i, m := range capturedMessages {
+		if m.Role == "user" && strings.Contains(m.Content, "[piped input]") {
+			pipedIdx = i
+		}
+		if m.Role == "user" && m.Content == "explain this" {
+			queryIdx = i
+		}
+	}
+	if pipedIdx == -1 {
+		t.Error("expected [piped input] message in agent messages")
+	}
+	if queryIdx == -1 {
+		t.Error("expected query message in agent messages")
+	}
+	if pipedIdx >= queryIdx {
+		t.Errorf("[piped input] (idx %d) must precede query (idx %d)", pipedIdx, queryIdx)
+	}
+	if !strings.Contains(capturedMessages[pipedIdx].Content, "foo.go") {
+		t.Errorf("piped input content missing, got: %q", capturedMessages[pipedIdx].Content)
 	}
 }

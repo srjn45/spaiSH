@@ -20,6 +20,7 @@ type Config struct {
 	Verbose       bool
 	WorkingDir    string
 	GitBranch     string
+	Stdin         string // content from piped stdin; injected as [piped input] before the query
 }
 
 // ConfirmFunc is called when a tier-gated command needs user approval.
@@ -114,6 +115,9 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 		{Role: "system", Content: systemPrompt + "\n\nSystem context:\n" + sysCtx},
 	}
 	messages = append(messages, sess.MessagesForPrompt()...)
+	if a.config.Stdin != "" {
+		messages = append(messages, ai.Message{Role: "user", Content: "[piped input]\n" + a.config.Stdin})
+	}
 	messages = append(messages, ai.Message{Role: "user", Content: req.Query})
 
 	autonomous := a.config.Autonomous || req.Autonomous
