@@ -13,6 +13,9 @@ type Request struct {
 	LLM             *LLMRequest      `json:"llm,omitempty"`              // for "llm" request type
 	Agent           *AgentRequest    `json:"agent,omitempty"`            // for "agent" request type
 	ConfirmResponse *ConfirmResponse `json:"confirm_response,omitempty"` // mid-loop reply from spai
+	SessionID       string           `json:"session_id,omitempty"`       // routing key for session file
+	Stdin           string           `json:"stdin,omitempty"`            // content from piped stdin
+	Session         *SessionRequest  `json:"session,omitempty"`          // for "session" request type
 }
 
 // Response is streamed from spaid → spai as newline-delimited JSON.
@@ -55,4 +58,10 @@ type ConfirmRequest struct {
 // ConfirmResponse is sent from spai → spaid after the user decides.
 type ConfirmResponse struct {
 	Approved bool `json:"approved"`
+}
+
+// SessionRequest is the payload for "session" request type.
+type SessionRequest struct {
+	Command string `json:"command"`         // "clear" | "compact"
+	Lines   int    `json:"lines,omitempty"` // for "clear": keep latest N messages (0 = wipe all)
 }
