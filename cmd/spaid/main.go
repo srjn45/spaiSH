@@ -137,7 +137,7 @@ func main() {
 			return
 		}
 
-		forceLocal := req.ForceLocal || cfg.Agent.Autonomous || req.Agent.Autonomous
+		forceLocal := req.ForceLocal
 		provider, err := rtr.SelectProvider(forceLocal)
 		if err != nil {
 			enc.Encode(protocol.Response{Type: "error", Content: err.Error()})
@@ -151,9 +151,6 @@ func main() {
 			Verbose:       cfg.Agent.Verbose || req.Agent.Verbose,
 			WorkingDir:    req.WorkingDir,
 			GitBranch:     req.GitBranch,
-		}
-		if agentCfg.MaxIterations <= 0 {
-			agentCfg.MaxIterations = 5
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())

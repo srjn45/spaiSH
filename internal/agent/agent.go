@@ -4,16 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"regexp"
 	"strings"
 
 	"spaios/internal/ai"
+	"spaios/internal/parser"
 	"spaios/internal/permissions"
 	"spaios/internal/protocol"
 	"spaios/internal/session"
 )
-
-var bashBlockRe = regexp.MustCompile("(?s)```(?:bash|sh|shell)?\n(.*?)```")
 
 // Config holds agent runtime settings, derived from spaid.toml [agent] section.
 type Config struct {
@@ -149,7 +147,7 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 		}
 
 		aiText := fullText.String()
-		commands := parseCommands(aiText)
+		commands := parser.ParseCommands(aiText)
 
 		// No commands = goal achieved
 		if len(commands) == 0 {
@@ -233,19 +231,3 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 	send(ctx, ch, protocol.Response{Type: "done"})
 }
 
-func parseCommands(text string) []string {
-	matches := bashBlockRe.FindAllStringSubmatch(text, -1)
-	var commands []string
-	for _, match := range matches {
-		if len(match) < 2 {
-			continue
-		}
-		for _, line := range strings.Split(strings.TrimSpace(match[1]), "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" && !strings.HasPrefix(line, "#") {
-				commands = append(commands, line)
-			}
-		}
-	}
-	return commands
-}

@@ -3,17 +3,15 @@ package router
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"spaios/internal/ai"
 	"spaios/internal/config"
+	"spaios/internal/parser"
 	"spaios/internal/permissions"
 	"spaios/internal/protocol"
 	"spaios/internal/session"
 )
-
-var bashBlockRe = regexp.MustCompile("(?s)```(?:bash|sh|shell)?\n(.*?)```")
 
 const systemPrompt = `You are a Linux system assistant integrated into the user's shell.
 Help the user accomplish their request.
@@ -62,7 +60,7 @@ func (r *Router) Route(ctx context.Context, req *protocol.Request, sess *session
 			respCh <- protocol.Response{Type: "text", Content: chunk}
 		}
 
-		commands := parseCommands(fullText.String())
+		commands := parser.ParseCommands(fullText.String())
 		if len(commands) > 0 {
 			plan := make([]protocol.CommandItem, len(commands))
 			for i, cmd := range commands {
@@ -112,20 +110,3 @@ func (r *Router) buildMessages(req *protocol.Request, sess *session.Session) []a
 	return msgs
 }
 
-// parseCommands extracts shell commands from ```bash code blocks in the AI response.
-func parseCommands(text string) []string {
-	matches := bashBlockRe.FindAllStringSubmatch(text, -1)
-	var commands []string
-	for _, match := range matches {
-		if len(match) < 2 {
-			continue
-		}
-		for _, line := range strings.Split(strings.TrimSpace(match[1]), "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" && !strings.HasPrefix(line, "#") {
-				commands = append(commands, line)
-			}
-		}
-	}
-	return commands
-}
