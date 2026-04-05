@@ -46,7 +46,7 @@ func loadSession(id string) *session.Session {
 	sess, err := session.LoadByID(id)
 	if err != nil {
 		log.Printf("session load warning (id=%s): %v — starting fresh", id, err)
-		sess, _ = session.LoadByID(id)
+		return new(session.Session)
 	}
 	return sess
 }

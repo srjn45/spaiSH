@@ -1,7 +1,7 @@
 package protocol
 
 // Request is sent from spai → spaid over the Unix socket.
-// Two types are used: "query" for asking, "execute" for running confirmed commands.
+// Types: "query" | "execute" | "llm" | "agent" | "session" | "confirm_response"
 type Request struct {
 	Type            string           `json:"type"`                       // "query" | "execute" | "llm" | "agent"
 	Query           string           `json:"query,omitempty"`            // the user's natural language query
