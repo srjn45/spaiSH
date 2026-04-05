@@ -27,13 +27,33 @@ cp "$REPO_DIR/systemd/spaid.service" "$SYSTEMD_DIR/spaid.service"
 systemctl --user daemon-reload
 systemctl --user enable --now spaid
 
+# Inject per-shell session ID into detected shell rc files.
+# The literal $$ in the exported value expands at shell startup to the PID of
+# the current shell, giving each terminal window a unique session.
+inject_session_id() {
+  local rc_file="$1"
+  if [ -f "$rc_file" ]; then
+    if grep -q 'SPAI_SESSION_ID' "$rc_file"; then
+      echo "  → SPAI_SESSION_ID already in $rc_file — skipping"
+    else
+      printf '\n# spaiOS: per-shell session isolation\nexport SPAI_SESSION_ID=$$\n' >> "$rc_file"
+      echo "  → Added SPAI_SESSION_ID to $rc_file"
+    fi
+  fi
+}
+
+echo "Configuring shell session isolation..."
+inject_session_id "$HOME/.bashrc"
+inject_session_id "$HOME/.zshrc"
+
 echo ""
 echo "Installation complete."
 echo ""
 echo "Next steps:"
 echo "  1. Edit ~/.config/spaios/spaid.toml — set your API endpoint and model."
 echo "  2. Set your API key:  export SPAI_API_KEY='your-key'  (add to ~/.bashrc)"
-echo "  3. Run: spai 'is my system healthy?'"
+echo "  3. Restart your shell (or run: source ~/.bashrc) to activate session isolation."
+echo "  4. Run: spai 'is my system healthy?'"
 echo ""
 echo "Or to use a local model instead:"
 echo "  Install a local model runtime, then set prefer_local = true in spaid.toml"

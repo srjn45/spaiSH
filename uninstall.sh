@@ -13,6 +13,20 @@ rm -f "$HOME/.local/share/spaios/spaid.sock"
 
 systemctl --user daemon-reload
 
+# Remove the SPAI_SESSION_ID export lines added by install.sh.
+remove_session_id() {
+  local rc_file="$1"
+  if [ -f "$rc_file" ] && grep -q 'SPAI_SESSION_ID' "$rc_file"; then
+    sed -i '/# spaiOS: per-shell session isolation/d' "$rc_file"
+    sed -i '/SPAI_SESSION_ID/d' "$rc_file"
+    echo "  → Removed SPAI_SESSION_ID from $rc_file"
+  fi
+}
+
+echo "Cleaning shell init files..."
+remove_session_id "$HOME/.bashrc"
+remove_session_id "$HOME/.zshrc"
+
 echo ""
 echo "spaiOS uninstalled."
 echo ""
