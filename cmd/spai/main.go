@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -148,6 +149,8 @@ func main() {
 
 	dryRun := flag.Bool("dry-run", false, "show plan without executing")
 	forceLocal := flag.Bool("local", false, "force local model")
+	verbose := flag.Bool("verbose", false, "show full command output and iteration details")
+	autonomous := flag.Bool("autonomous", false, "run all commands without confirmation prompts")
 	legal := flag.Bool("legal", false, "print legal disclaimer and exit")
 	flag.Usage = func() {
 		fmt.Println("Usage: spai [flags] <query>")
@@ -175,7 +178,6 @@ func main() {
 
 	showDisclaimer()
 
-	// Auto-start daemon if not running
 	if err := socket.EnsureRunning(sockPath(), daemonBin()); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -183,27 +185,40 @@ func main() {
 
 	cwd, _ := os.Getwd()
 	req := &protocol.Request{
-		Type:       "query",
-		Query:      query,
+		Type:       "agent",
 		WorkingDir: cwd,
 		GitBranch:  gitBranch(),
 		ForceLocal: *forceLocal,
 		DryRun:     *dryRun,
+		Agent: &protocol.AgentRequest{
+			Query:      query,
+			Verbose:    *verbose,
+			Autonomous: *autonomous,
+		},
 	}
 
 	client := socket.NewClient(sockPath())
-
-	var plan []protocol.CommandItem
 	fmt.Println()
 
-	err := client.Send(req, func(resp protocol.Response) error {
+	err := client.SendInteractive(req, func(resp protocol.Response, enc *json.Encoder) error {
 		switch resp.Type {
 		case "text":
 			fmt.Print(resp.Content)
-		case "plan":
-			plan = resp.Plan
+		case "output":
+			fmt.Print(resp.Content)
 		case "error":
 			fmt.Fprintf(os.Stderr, "\nerror: %s\n", resp.Content)
+		case "confirm_request":
+			var confirmReq protocol.ConfirmRequest
+			if err := json.Unmarshal([]byte(resp.Content), &confirmReq); err != nil {
+				return err
+			}
+			fmt.Printf("\n[%s] %s\n", confirmReq.Display, confirmReq.Command)
+			approved := confirmSingle(confirmReq)
+			return enc.Encode(&protocol.Request{
+				Type:            "confirm_response",
+				ConfirmResponse: &protocol.ConfirmResponse{Approved: approved},
+			})
 		}
 		return nil
 	})
@@ -211,32 +226,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-
 	fmt.Println()
-
-	if len(plan) == 0 || *dryRun {
-		if *dryRun && len(plan) > 0 {
-			fmt.Println("\n[dry-run] Would run:")
-			for _, item := range plan {
-				fmt.Printf("  [%s] %s\n", item.Display, item.Command)
-			}
-		}
-		return
-	}
-
-	// Show plan and ask for confirmation
-	fmt.Println("\nI will run:")
-	for _, item := range plan {
-		fmt.Printf("  [%s] %s\n", item.Display, item.Command)
-	}
-
-	if confirmPlan(plan) == nil {
-		fmt.Println("Cancelled.")
-		return
-	}
-
-	fmt.Println()
-	runConfirmed(plan, client)
 }
 
 // runConfirmed executes confirmed commands after plan approval.
@@ -278,6 +268,22 @@ func runConfirmed(plan []protocol.CommandItem, client *socket.Client) {
 		}
 		return nil
 	})
+}
+
+// confirmSingle prompts the user to approve or deny a single command.
+// Used by the agent flow for mid-loop tier-gated confirmation.
+func confirmSingle(req protocol.ConfirmRequest) bool {
+	reader := bufio.NewReader(os.Stdin)
+	if req.Tier == permissions.TierDestructive.String() {
+		fmt.Printf("\n⚠  DESTRUCTIVE — cannot be undone:\n   %s\n", req.Command)
+		fmt.Print("Type YES to confirm: ")
+		input, _ := reader.ReadString('\n')
+		return strings.TrimSpace(input) == "YES"
+	}
+	fmt.Print("Allow? [y/n]: ")
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(strings.ToLower(input))
+	return input == "y" || input == "yes"
 }
 
 // confirmPlan prompts the user for confirmation.
