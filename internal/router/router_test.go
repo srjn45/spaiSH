@@ -133,6 +133,71 @@ func TestRouterNoProviderError(t *testing.T) {
 	}
 }
 
+// capturingProvider records the messages it receives for assertion.
+type capturingProvider struct {
+	stubProvider
+	lastMessages []ai.Message
+}
+
+func (c *capturingProvider) Available() bool { return true }
+func (c *capturingProvider) Complete(_ context.Context, msgs []ai.Message) (<-chan string, error) {
+	c.lastMessages = append([]ai.Message(nil), msgs...)
+	ch := make(chan string, 1)
+	ch <- "All good."
+	close(ch)
+	return ch, nil
+}
+
+func TestRouterInjectsStdin(t *testing.T) {
+	cfg := &config.Config{
+		Routing: config.RoutingConfig{PreferLocal: false},
+	}
+
+	capturing := &capturingProvider{}
+
+	r := router.New(cfg, capturing, &stubProvider{available: false})
+	req := &protocol.Request{
+		Type:       "query",
+		Query:      "what does this output mean?",
+		WorkingDir: "/home/user",
+		Stdin:      "file1.go\nfile2.go\n",
+	}
+
+	ch, err := r.Route(context.Background(), req, newTestSession(t))
+	if err != nil {
+		t.Fatalf("Route() error: %v", err)
+	}
+	for range ch {
+	}
+
+	capturedMessages := capturing.lastMessages
+	if len(capturedMessages) < 3 {
+		t.Fatalf("expected at least 3 messages (system + piped + query), got %d", len(capturedMessages))
+	}
+
+	var pipedIdx, queryIdx int = -1, -1
+	for i, m := range capturedMessages {
+		if m.Role == "user" && strings.Contains(m.Content, "[piped input]") {
+			pipedIdx = i
+		}
+		if m.Role == "user" && m.Content == "what does this output mean?" {
+			queryIdx = i
+		}
+	}
+	if pipedIdx == -1 {
+		t.Error("expected a [piped input] user message")
+	}
+	if queryIdx == -1 {
+		t.Error("expected the query user message")
+	}
+	if pipedIdx >= queryIdx {
+		t.Errorf("[piped input] (idx %d) must come before query (idx %d)", pipedIdx, queryIdx)
+	}
+	if !strings.Contains(capturedMessages[pipedIdx].Content, "file1.go") {
+		t.Errorf("piped input should contain stdin content, got: %q", capturedMessages[pipedIdx].Content)
+	}
+}
+
 func init() {
 	// Ensure test temp dirs work
 	os.MkdirAll(os.TempDir(), 0755)

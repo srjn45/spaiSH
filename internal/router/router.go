@@ -106,6 +106,9 @@ func (r *Router) buildMessages(req *protocol.Request, sess *session.Session) []a
 	sysMsg := systemPrompt + "\n\nSystem context:\n" + ctx
 	msgs := []ai.Message{{Role: "system", Content: sysMsg}}
 	msgs = append(msgs, sess.MessagesForPrompt()...)
+	if req.Stdin != "" {
+		msgs = append(msgs, ai.Message{Role: "user", Content: "[piped input]\n" + req.Stdin})
+	}
 	msgs = append(msgs, ai.Message{Role: "user", Content: req.Query})
 	return msgs
 }
