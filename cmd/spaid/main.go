@@ -38,6 +38,19 @@ func sockPath() string {
 	return filepath.Join(home, ".local", "share", "spaios", "spaid.sock")
 }
 
+// loadSession returns the session for the given ID, falling back to "default".
+func loadSession(id string) *session.Session {
+	if id == "" {
+		id = "default"
+	}
+	sess, err := session.LoadByID(id)
+	if err != nil {
+		log.Printf("session load warning (id=%s): %v — starting fresh", id, err)
+		sess, _ = session.LoadByID(id)
+	}
+	return sess
+}
+
 func main() {
 	logPath := filepath.Join(filepath.Dir(sockPath()), "spaid.log")
 	os.MkdirAll(filepath.Dir(logPath), 0700)
@@ -70,12 +83,6 @@ func main() {
 	local := ai.NewLocalProvider(cfg.Local.OllamaEndpoint, localModel)
 	rtr := router.New(cfg, cloud, local)
 
-	sess, err := session.LoadFrom(session.DefaultPath())
-	if err != nil {
-		log.Printf("session load warning: %v — starting fresh", err)
-		sess, _ = session.LoadFrom(session.DefaultPath())
-	}
-
 	sock := sockPath()
 	log.Printf("spaid starting, socket: %s", sock)
 
@@ -89,6 +96,7 @@ func main() {
 	}()
 
 	onQuery := func(req *protocol.Request, enc *json.Encoder) {
+		sess := loadSession(req.SessionID)
 		respCh, err := rtr.Route(context.Background(), req, sess)
 		if err != nil {
 			enc.Encode(protocol.Response{Type: "error", Content: err.Error()})
@@ -137,8 +145,8 @@ func main() {
 			return
 		}
 
-		forceLocal := req.ForceLocal
-		provider, err := rtr.SelectProvider(forceLocal)
+		sess := loadSession(req.SessionID)
+		provider, err := rtr.SelectProvider(req.ForceLocal)
 		if err != nil {
 			enc.Encode(protocol.Response{Type: "error", Content: err.Error()})
 			enc.Encode(protocol.Response{Type: "done"})
@@ -151,6 +159,7 @@ func main() {
 			Verbose:       cfg.Agent.Verbose || req.Agent.Verbose,
 			WorkingDir:    req.WorkingDir,
 			GitBranch:     req.GitBranch,
+			Stdin:         req.Stdin,
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -182,7 +191,74 @@ func main() {
 		sess.Save()
 	}
 
-	if err := socket.Serve(sock, onQuery, onExec, onLLM, onAgent); err != nil {
+	onSession := func(req *protocol.Request, enc *json.Encoder) {
+		if req.Session == nil {
+			enc.Encode(protocol.Response{Type: "error", Content: "missing session payload"})
+			enc.Encode(protocol.Response{Type: "done"})
+			return
+		}
+
+		sess := loadSession(req.SessionID)
+
+		switch req.Session.Command {
+		case "clear":
+			if req.Session.Lines == 0 {
+				sess.Clear()
+				enc.Encode(protocol.Response{Type: "text", Content: "Session cleared.\n"})
+			} else {
+				sess.Trim(req.Session.Lines)
+				enc.Encode(protocol.Response{Type: "text", Content: fmt.Sprintf("Session trimmed to %d messages.\n", req.Session.Lines)})
+			}
+			if err := sess.Save(); err != nil {
+				log.Printf("session save error: %v", err)
+			}
+			enc.Encode(protocol.Response{Type: "done"})
+
+		case "compact":
+			if len(sess.Messages) == 0 {
+				enc.Encode(protocol.Response{Type: "text", Content: "Nothing to compact — session is empty.\n"})
+				enc.Encode(protocol.Response{Type: "done"})
+				return
+			}
+
+			provider, err := rtr.SelectProvider(req.ForceLocal)
+			if err != nil {
+				enc.Encode(protocol.Response{Type: "error", Content: err.Error()})
+				enc.Encode(protocol.Response{Type: "done"})
+				return
+			}
+
+			compactMsgs := []ai.Message{
+				{Role: "system", Content: "Summarise the following conversation concisely. Focus on what was worked on and what was achieved. One short paragraph."},
+			}
+			compactMsgs = append(compactMsgs, sess.Messages...)
+
+			textCh, err := provider.Complete(context.Background(), compactMsgs)
+			if err != nil {
+				enc.Encode(protocol.Response{Type: "error", Content: err.Error()})
+				enc.Encode(protocol.Response{Type: "done"})
+				return
+			}
+
+			var summary strings.Builder
+			for chunk := range textCh {
+				summary.WriteString(chunk)
+				enc.Encode(protocol.Response{Type: "text", Content: chunk})
+			}
+
+			sess.Compact(summary.String())
+			if err := sess.Save(); err != nil {
+				log.Printf("session save error: %v", err)
+			}
+			enc.Encode(protocol.Response{Type: "done"})
+
+		default:
+			enc.Encode(protocol.Response{Type: "error", Content: "unknown session command: " + req.Session.Command})
+			enc.Encode(protocol.Response{Type: "done"})
+		}
+	}
+
+	if err := socket.Serve(sock, onQuery, onExec, onLLM, onAgent, onSession); err != nil {
 		log.Fatalf("socket error: %v", err)
 	}
 }
