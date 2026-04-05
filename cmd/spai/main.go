@@ -259,7 +259,7 @@ func runConfirmed(plan []protocol.CommandItem, client *socket.Client) {
 		Type:     "execute",
 		Commands: socketCmds,
 	}
-	client.Send(execReq, func(resp protocol.Response) error {
+	if err := client.Send(execReq, func(resp protocol.Response) error {
 		switch resp.Type {
 		case "output":
 			fmt.Print(resp.Content)
@@ -267,20 +267,27 @@ func runConfirmed(plan []protocol.CommandItem, client *socket.Client) {
 			fmt.Fprintf(os.Stderr, "error: %s\n", resp.Content)
 		}
 		return nil
-	})
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+	}
 }
 
 // confirmSingle prompts the user to approve or deny a single command.
 // Used by the agent flow for mid-loop tier-gated confirmation.
 func confirmSingle(req protocol.ConfirmRequest) bool {
 	reader := bufio.NewReader(os.Stdin)
-	if req.Tier == permissions.TierDestructive.String() {
+	switch req.Tier {
+	case permissions.TierDestructive.String():
 		fmt.Printf("\n⚠  DESTRUCTIVE — cannot be undone:\n   %s\n", req.Command)
 		fmt.Print("Type YES to confirm: ")
 		input, _ := reader.ReadString('\n')
 		return strings.TrimSpace(input) == "YES"
+	case permissions.TierElevated.String():
+		fmt.Printf("\n⚠  ELEVATED — requires elevated privileges:\n   %s\n", req.Command)
+		fmt.Print("Allow? [y/n]: ")
+	default:
+		fmt.Print("Allow? [y/n]: ")
 	}
-	fmt.Print("Allow? [y/n]: ")
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(strings.ToLower(input))
 	return input == "y" || input == "yes"
