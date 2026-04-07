@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"testing"
+
+	"spaios/internal/session"
 )
 
 func TestResolveSessionIDFlagWins(t *testing.T) {
@@ -22,10 +24,27 @@ func TestResolveSessionIDEnvFallback(t *testing.T) {
 }
 
 func TestResolveSessionIDDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir) // ensure no real pinned_session leaks in
 	t.Setenv("SPAI_SESSION_ID", "")
 	result := resolveSessionID("")
 	if result != "default" {
 		t.Errorf("expected 'default', got %q", result)
+	}
+}
+
+func TestResolveSessionIDPinnedFallback(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("SPAI_SESSION_ID", "")
+
+	if err := session.WritePinned("infra"); err != nil {
+		t.Fatalf("WritePinned error: %v", err)
+	}
+
+	result := resolveSessionID("")
+	if result != "infra" {
+		t.Errorf("expected pinned session 'infra', got %q", result)
 	}
 }
 

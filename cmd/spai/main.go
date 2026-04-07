@@ -13,6 +13,7 @@ import (
 
 	"spaios/internal/permissions"
 	"spaios/internal/protocol"
+	"spaios/internal/session"
 	"spaios/internal/socket"
 )
 
@@ -70,12 +71,15 @@ func gitBranch() string {
 }
 
 // resolveSessionID returns the session ID to use for this invocation.
-// Priority: explicit flag value > $SPAI_SESSION_ID env var > "default".
+// Priority: explicit flag value > $SPAI_SESSION_ID env var > pinned session > "default".
 func resolveSessionID(flagVal string) string {
 	if flagVal != "" {
 		return flagVal
 	}
 	if id := os.Getenv("SPAI_SESSION_ID"); id != "" {
+		return id
+	}
+	if id := session.ReadPinned(); id != "" {
 		return id
 	}
 	return "default"
