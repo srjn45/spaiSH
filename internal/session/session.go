@@ -5,28 +5,22 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"spaios/internal/ai"
 )
 
 const maxMessages = 20
 
-// Session holds the conversation history for the current daemon session.
+// Session holds the in-memory state for a session. Persisted to sessions/<id>/cache.json.
 type Session struct {
-	Messages []ai.Message `json:"messages"`
-	path     string
+	Messages  []ai.Message `json:"messages"`
+	Summary   string       `json:"summary,omitempty"`
+	UpdatedAt time.Time    `json:"updated_at,omitempty"`
+	dir       string       // unexported: sessions/<id>/ directory
 }
 
-// DefaultPath returns the default session file path.
-func DefaultPath() string {
-	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "session.json")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "spaios", "session.json")
-}
-
-// SessionsDir returns the directory where per-session files are stored.
+// SessionsDir returns the directory where per-session subdirectories are stored.
 func SessionsDir() string {
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
 		return filepath.Join(d, "spaios", "sessions")
@@ -35,16 +29,41 @@ func SessionsDir() string {
 	return filepath.Join(home, ".local", "share", "spaios", "sessions")
 }
 
+// cachePath returns the path to this session's cache.json.
+func (s *Session) cachePath() string {
+	return filepath.Join(s.dir, "cache.json")
+}
+
+// Dir returns the session directory path (exported for use by history helpers).
+func (s *Session) Dir() string {
+	return s.dir
+}
+
 // LoadByID loads the session for the given ID from SessionsDir.
-// An empty id falls back to "default". Returns a fresh empty session if the
-// file does not exist; logs a warning and returns empty if the file is corrupt.
+// An empty id falls back to "default".
+// Transparently migrates the old flat layout (sessions/<id>.json → sessions/<id>/cache.json).
+// Returns a fresh empty session if the cache does not exist.
 func LoadByID(id string) (*Session, error) {
 	if id == "" {
 		id = "default"
 	}
-	path := filepath.Join(SessionsDir(), id+".json")
-	s := &Session{path: path}
-	data, err := os.ReadFile(path)
+	dir := filepath.Join(SessionsDir(), id)
+
+	// Migrate flat layout if the old single-file format exists.
+	flatPath := filepath.Join(SessionsDir(), id+".json")
+	if _, err := os.Stat(flatPath); err == nil {
+		if mkErr := os.MkdirAll(dir, 0755); mkErr != nil {
+			return nil, mkErr
+		}
+		if mvErr := os.Rename(flatPath, filepath.Join(dir, "cache.json")); mvErr != nil {
+			return nil, mvErr
+		}
+		// Create an empty history.md to mark the migration point.
+		os.WriteFile(filepath.Join(dir, "history.md"), nil, 0600)
+	}
+
+	s := &Session{dir: dir}
+	data, err := os.ReadFile(s.cachePath())
 	if os.IsNotExist(err) {
 		return s, nil
 	}
@@ -52,28 +71,23 @@ func LoadByID(id string) (*Session, error) {
 		return nil, err
 	}
 	if err := json.Unmarshal(data, s); err != nil {
-		log.Printf("session: corrupt file %s, starting fresh", path)
-		return &Session{path: path}, nil
+		log.Printf("session: corrupt cache %s, starting fresh", s.cachePath())
+		return &Session{dir: dir}, nil
 	}
 	return s, nil
 }
 
-// LoadFrom loads a session from the given file path.
-// If the file does not exist, an empty session is returned without error.
-func LoadFrom(path string) (*Session, error) {
-	s := &Session{path: path}
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return s, nil
+// SaveCache writes the session cache (messages + summary) to sessions/<id>/cache.json.
+func (s *Session) SaveCache() error {
+	if err := os.MkdirAll(s.dir, 0755); err != nil {
+		return err
 	}
+	s.UpdatedAt = time.Now().UTC()
+	data, err := json.Marshal(s)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if err := json.Unmarshal(data, s); err != nil {
-		// Corrupted session — start fresh
-		return &Session{path: path}, nil
-	}
-	return s, nil
+	return os.WriteFile(s.cachePath(), data, 0600)
 }
 
 // AddExchange appends a user/assistant exchange and trims to maxMessages.
@@ -87,32 +101,24 @@ func (s *Session) AddExchange(userMsg, assistantMsg string) {
 	}
 }
 
-// MessagesForPrompt returns the session messages for inclusion in the AI prompt.
+// MessagesForPrompt returns messages for the AI prompt.
+// If Summary is non-empty, it is prepended as a synthetic assistant message.
 func (s *Session) MessagesForPrompt() []ai.Message {
-	out := make([]ai.Message, len(s.Messages))
-	copy(out, s.Messages)
+	var out []ai.Message
+	if s.Summary != "" {
+		out = append(out, ai.Message{Role: "assistant", Content: "[context summary]\n" + s.Summary})
+	}
+	out = append(out, s.Messages...)
 	return out
 }
 
-// Save writes the session to disk with mode 0600.
-func (s *Session) Save() error {
-	if err := os.MkdirAll(filepath.Dir(s.path), 0755); err != nil {
-		return err
-	}
-	data, err := json.Marshal(s)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(s.path, data, 0600)
-}
-
-// Clear removes all messages from the session.
-func (s *Session) Clear() {
-	s.Messages = nil
+// SetSummary sets the session summary field. Used by rebuild-context and tests.
+func (s *Session) SetSummary(summary string) {
+	s.Summary = summary
 }
 
 // Trim keeps the latest n messages, discarding older ones.
-// If n <= 0 or n >= len(Messages), this is a no-op (use Clear for wipe-all).
+// If n <= 0 or n >= len(Messages), this is a no-op.
 func (s *Session) Trim(n int) {
 	if n <= 0 || len(s.Messages) <= n {
 		return
@@ -120,11 +126,72 @@ func (s *Session) Trim(n int) {
 	s.Messages = s.Messages[len(s.Messages)-n:]
 }
 
-// Compact replaces all messages with a single synthetic exchange that records
-// the provided summary. Used by `spai compact` to shrink session context.
+// Compact replaces all messages with a summary stored in the Summary field.
+// MessagesForPrompt will inject it as a synthetic assistant context message.
 func (s *Session) Compact(summary string) {
-	s.Messages = []ai.Message{
-		{Role: "user", Content: "[session summary request]"},
-		{Role: "assistant", Content: summary},
+	s.Messages = nil
+	s.Summary = summary
+}
+
+// Clear removes all in-memory state and deletes the session directory from disk.
+func (s *Session) Clear() error {
+	s.Messages = nil
+	s.Summary = ""
+	return os.RemoveAll(s.dir)
+}
+
+// SessionSummary holds metadata for a session used by the `spai sessions` listing.
+type SessionSummary struct {
+	ID       string
+	MsgCount int
+	ModTime  time.Time // mtime of history.md, or dir mtime if no history.md
+}
+
+// ListSessions returns a summary of all sessions in SessionsDir.
+func ListSessions() ([]SessionSummary, error) {
+	dir := SessionsDir()
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil, nil
 	}
+	if err != nil {
+		return nil, err
+	}
+
+	var result []SessionSummary
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		id := e.Name()
+		sessDir := filepath.Join(dir, id)
+
+		// Read message count from cache.json.
+		msgCount := 0
+		data, err := os.ReadFile(filepath.Join(sessDir, "cache.json"))
+		if err == nil {
+			var cache struct {
+				Messages []json.RawMessage `json:"messages"`
+			}
+			if json.Unmarshal(data, &cache) == nil {
+				msgCount = len(cache.Messages)
+			}
+		}
+
+		// ModTime: prefer history.md mtime; fall back to dir mtime.
+		var modTime time.Time
+		if info, err := e.Info(); err == nil {
+			modTime = info.ModTime()
+		}
+		if hinfo, err := os.Stat(filepath.Join(sessDir, "history.md")); err == nil {
+			modTime = hinfo.ModTime()
+		}
+
+		result = append(result, SessionSummary{
+			ID:       id,
+			MsgCount: msgCount,
+			ModTime:  modTime,
+		})
+	}
+	return result, nil
 }

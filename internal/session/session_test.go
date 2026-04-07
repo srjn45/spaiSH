@@ -1,101 +1,17 @@
 package session_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"spaios/internal/ai"
 	"spaios/internal/session"
 )
 
-func TestSessionLoadEmpty(t *testing.T) {
-	dir := t.TempDir()
-	s, err := session.LoadFrom(filepath.Join(dir, "session.json"))
-	if err != nil {
-		t.Fatalf("LoadFrom() error: %v", err)
-	}
-	if len(s.Messages) != 0 {
-		t.Errorf("expected empty messages, got %d", len(s.Messages))
-	}
-}
-
-func TestSessionAddAndSave(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "session.json")
-
-	s, _ := session.LoadFrom(path)
-	s.AddExchange("fix nginx", "I found the issue and fixed it.")
-
-	if err := s.Save(); err != nil {
-		t.Fatalf("Save() error: %v", err)
-	}
-
-	// Reload and verify
-	s2, err := session.LoadFrom(path)
-	if err != nil {
-		t.Fatalf("reload error: %v", err)
-	}
-	if len(s2.Messages) != 2 {
-		t.Errorf("expected 2 messages, got %d", len(s2.Messages))
-	}
-	if s2.Messages[0].Role != "user" || s2.Messages[0].Content != "fix nginx" {
-		t.Errorf("unexpected first message: %+v", s2.Messages[0])
-	}
-}
-
-func TestSessionTruncates(t *testing.T) {
-	dir := t.TempDir()
-	s, _ := session.LoadFrom(filepath.Join(dir, "session.json"))
-
-	// Add 15 exchanges = 30 messages, should truncate to 20
-	for i := 0; i < 15; i++ {
-		s.AddExchange("query", "response")
-	}
-	if len(s.Messages) > 20 {
-		t.Errorf("expected max 20 messages, got %d", len(s.Messages))
-	}
-}
-
-func TestSessionMessages(t *testing.T) {
-	dir := t.TempDir()
-	s, _ := session.LoadFrom(filepath.Join(dir, "session.json"))
-	s.AddExchange("hello", "hi there")
-
-	msgs := s.MessagesForPrompt()
-	if len(msgs) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(msgs))
-	}
-	if msgs[0] != (ai.Message{Role: "user", Content: "hello"}) {
-		t.Errorf("unexpected message: %+v", msgs[0])
-	}
-}
-
-func TestSessionFilePermissions(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "session.json")
-	s, _ := session.LoadFrom(path)
-	s.AddExchange("q", "a")
-	s.Save()
-
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0600 {
-		t.Errorf("expected file mode 0600, got %v", info.Mode().Perm())
-	}
-}
-
-func TestSessionsDir(t *testing.T) {
-	dir := session.SessionsDir()
-	if dir == "" {
-		t.Error("SessionsDir() must not be empty")
-	}
-	if !filepath.IsAbs(dir) {
-		t.Errorf("SessionsDir() must be absolute, got %q", dir)
-	}
-}
+// ---------- LoadByID — new directory layout ----------
 
 func TestLoadByIDNewSession(t *testing.T) {
 	dir := t.TempDir()
@@ -116,8 +32,8 @@ func TestLoadByIDRoundTrip(t *testing.T) {
 
 	s, _ := session.LoadByID("roundtrip")
 	s.AddExchange("hello", "world")
-	if err := s.Save(); err != nil {
-		t.Fatalf("Save() error: %v", err)
+	if err := s.SaveCache(); err != nil {
+		t.Fatalf("SaveCache() error: %v", err)
 	}
 
 	s2, err := session.LoadByID("roundtrip")
@@ -138,11 +54,11 @@ func TestLoadByIDEmptyIDUsesDefault(t *testing.T) {
 		t.Fatalf("LoadByID('') error: %v", err)
 	}
 	s.AddExchange("q", "a")
-	s.Save()
+	s.SaveCache()
 
-	defaultPath := filepath.Join(dir, "spaios", "sessions", "default.json")
-	if _, err := os.Stat(defaultPath); err != nil {
-		t.Errorf("expected file at %s, got error: %v", defaultPath, err)
+	cachePath := filepath.Join(dir, "spaios", "sessions", "default", "cache.json")
+	if _, err := os.Stat(cachePath); err != nil {
+		t.Errorf("expected cache.json at %s, got error: %v", cachePath, err)
 	}
 }
 
@@ -150,9 +66,9 @@ func TestLoadByIDCorruptFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
 
-	sessDir := filepath.Join(dir, "spaios", "sessions")
+	sessDir := filepath.Join(dir, "spaios", "sessions", "corrupt")
 	os.MkdirAll(sessDir, 0755)
-	os.WriteFile(filepath.Join(sessDir, "corrupt.json"), []byte("not json{{{"), 0600)
+	os.WriteFile(filepath.Join(sessDir, "cache.json"), []byte("not json{{{"), 0600)
 
 	s, err := session.LoadByID("corrupt")
 	if err != nil {
@@ -163,14 +79,128 @@ func TestLoadByIDCorruptFile(t *testing.T) {
 	}
 }
 
+// ---------- Migration: flat .json → directory ----------
+
+func TestLoadByIDMigratesFlat(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	// Create a flat sessions/migrate.json file
+	sessionsDir := filepath.Join(dir, "spaios", "sessions")
+	os.MkdirAll(sessionsDir, 0755)
+	flatData, _ := json.Marshal(map[string]interface{}{
+		"messages": []ai.Message{
+			{Role: "user", Content: "old msg"},
+			{Role: "assistant", Content: "old reply"},
+		},
+	})
+	os.WriteFile(filepath.Join(sessionsDir, "migrate.json"), flatData, 0600)
+
+	s, err := session.LoadByID("migrate")
+	if err != nil {
+		t.Fatalf("LoadByID() error: %v", err)
+	}
+	if len(s.Messages) != 2 {
+		t.Errorf("expected 2 migrated messages, got %d", len(s.Messages))
+	}
+
+	// Flat file should be gone
+	if _, err := os.Stat(filepath.Join(sessionsDir, "migrate.json")); !os.IsNotExist(err) {
+		t.Error("flat .json file should have been removed after migration")
+	}
+	// cache.json should exist in new dir
+	if _, err := os.Stat(filepath.Join(sessionsDir, "migrate", "cache.json")); err != nil {
+		t.Errorf("cache.json not found after migration: %v", err)
+	}
+}
+
+// ---------- AddExchange + truncation ----------
+
+func TestSessionAddAndSave(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	s, _ := session.LoadByID("addtest")
+	s.AddExchange("fix nginx", "I found the issue and fixed it.")
+	if err := s.SaveCache(); err != nil {
+		t.Fatalf("SaveCache() error: %v", err)
+	}
+
+	s2, err := session.LoadByID("addtest")
+	if err != nil {
+		t.Fatalf("reload error: %v", err)
+	}
+	if len(s2.Messages) != 2 {
+		t.Errorf("expected 2 messages, got %d", len(s2.Messages))
+	}
+	if s2.Messages[0].Role != "user" || s2.Messages[0].Content != "fix nginx" {
+		t.Errorf("unexpected first message: %+v", s2.Messages[0])
+	}
+}
+
+func TestSessionTruncates(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	s, _ := session.LoadByID("trunctest")
+	for i := 0; i < 15; i++ {
+		s.AddExchange("query", "response")
+	}
+	if len(s.Messages) > 20 {
+		t.Errorf("expected max 20 messages, got %d", len(s.Messages))
+	}
+}
+
+// ---------- MessagesForPrompt — summary injection ----------
+
+func TestMessagesForPromptNoSummary(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	s, _ := session.LoadByID("nosummary")
+	s.AddExchange("hello", "hi")
+
+	msgs := s.MessagesForPrompt()
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	if msgs[0] != (ai.Message{Role: "user", Content: "hello"}) {
+		t.Errorf("unexpected message: %+v", msgs[0])
+	}
+}
+
+func TestMessagesForPromptWithSummary(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	s, _ := session.LoadByID("withsummary")
+	s.AddExchange("new question", "new answer")
+
+	// Manually set summary (normally set by Compact or rebuild-context)
+	s.SetSummary("Prior work: fixed nginx port conflict.")
+
+	msgs := s.MessagesForPrompt()
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages (summary + exchange), got %d", len(msgs))
+	}
+	if msgs[0].Role != "assistant" {
+		t.Errorf("expected first message role 'assistant', got %q", msgs[0].Role)
+	}
+	if msgs[0].Content != "[context summary]\nPrior work: fixed nginx port conflict." {
+		t.Errorf("unexpected summary message content: %q", msgs[0].Content)
+	}
+}
+
+// ---------- Trim ----------
+
 func TestSessionTrimKeepsLatestN(t *testing.T) {
 	dir := t.TempDir()
-	s, _ := session.LoadFrom(filepath.Join(dir, "s.json"))
+	t.Setenv("XDG_DATA_HOME", dir)
 
+	s, _ := session.LoadByID("trimtest")
 	for i := 0; i < 5; i++ {
 		s.AddExchange("q", "a")
 	}
-	// 10 messages total; trim to 4
 	s.Trim(4)
 	if len(s.Messages) != 4 {
 		t.Errorf("expected 4 messages after Trim(4), got %d", len(s.Messages))
@@ -179,30 +209,171 @@ func TestSessionTrimKeepsLatestN(t *testing.T) {
 
 func TestSessionTrimNGreaterThanLength(t *testing.T) {
 	dir := t.TempDir()
-	s, _ := session.LoadFrom(filepath.Join(dir, "s.json"))
-	s.AddExchange("q", "a") // 2 messages
+	t.Setenv("XDG_DATA_HOME", dir)
 
+	s, _ := session.LoadByID("trimtest2")
+	s.AddExchange("q", "a") // 2 messages
 	s.Trim(100)
 	if len(s.Messages) != 2 {
 		t.Errorf("expected 2 messages when N > len, got %d", len(s.Messages))
 	}
 }
 
+// ---------- Compact ----------
+
 func TestSessionCompact(t *testing.T) {
 	dir := t.TempDir()
-	s, _ := session.LoadFrom(filepath.Join(dir, "s.json"))
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	s, _ := session.LoadByID("compact")
 	s.AddExchange("first", "response1")
 	s.AddExchange("second", "response2")
-
 	s.Compact("Summary of the session.")
 
-	if len(s.Messages) != 2 {
-		t.Fatalf("expected 2 messages after Compact, got %d", len(s.Messages))
+	if len(s.Messages) != 0 {
+		t.Errorf("expected 0 messages after Compact, got %d", len(s.Messages))
 	}
-	if s.Messages[0].Role != "user" || s.Messages[0].Content != "[session summary request]" {
-		t.Errorf("unexpected first message: %+v", s.Messages[0])
+	msgs := s.MessagesForPrompt()
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message (summary) from MessagesForPrompt, got %d", len(msgs))
 	}
-	if s.Messages[1].Role != "assistant" || s.Messages[1].Content != "Summary of the session." {
-		t.Errorf("unexpected second message: %+v", s.Messages[1])
+	if msgs[0].Role != "assistant" || msgs[0].Content != "[context summary]\nSummary of the session." {
+		t.Errorf("unexpected compact message: %+v", msgs[0])
+	}
+}
+
+// ---------- Clear ----------
+
+func TestSessionClearRemovesDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	s, _ := session.LoadByID("cleartest")
+	s.AddExchange("q", "a")
+	s.SaveCache()
+
+	sessDir := filepath.Join(dir, "spaios", "sessions", "cleartest")
+	if _, err := os.Stat(sessDir); err != nil {
+		t.Fatalf("session dir should exist before clear: %v", err)
+	}
+
+	if err := s.Clear(); err != nil {
+		t.Fatalf("Clear() error: %v", err)
+	}
+	if len(s.Messages) != 0 {
+		t.Error("expected empty messages after Clear")
+	}
+	if _, err := os.Stat(sessDir); !os.IsNotExist(err) {
+		t.Error("session dir should be removed after Clear")
+	}
+}
+
+func TestSessionClearNonExistentDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	s, _ := session.LoadByID("notexist")
+	// Never saved — clear should succeed silently
+	if err := s.Clear(); err != nil {
+		t.Errorf("Clear() on non-existent dir should not error: %v", err)
+	}
+}
+
+// ---------- SaveCache file permissions ----------
+
+func TestSaveCacheFilePermissions(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	s, _ := session.LoadByID("perms")
+	s.AddExchange("q", "a")
+	s.SaveCache()
+
+	cachePath := filepath.Join(dir, "spaios", "sessions", "perms", "cache.json")
+	info, err := os.Stat(cachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("expected file mode 0600, got %v", info.Mode().Perm())
+	}
+}
+
+// ---------- SaveCache stores UpdatedAt ----------
+
+func TestSaveCacheSetsUpdatedAt(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	before := time.Now().UTC().Add(-time.Second)
+	s, _ := session.LoadByID("timestamp")
+	s.AddExchange("q", "a")
+	s.SaveCache()
+
+	s2, _ := session.LoadByID("timestamp")
+	if s2.UpdatedAt.IsZero() {
+		t.Error("UpdatedAt should be set after SaveCache")
+	}
+	if s2.UpdatedAt.Before(before) {
+		t.Errorf("UpdatedAt %v is before test start %v", s2.UpdatedAt, before)
+	}
+}
+
+// ---------- SessionsDir ----------
+
+func TestSessionsDir(t *testing.T) {
+	d := session.SessionsDir()
+	if d == "" {
+		t.Error("SessionsDir() must not be empty")
+	}
+	if !filepath.IsAbs(d) {
+		t.Errorf("SessionsDir() must be absolute, got %q", d)
+	}
+}
+
+// ---------- ListSessions ----------
+
+func TestListSessions(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	s1, _ := session.LoadByID("alpha")
+	s1.AddExchange("q", "a")
+	s1.AddExchange("q2", "a2")
+	s1.SaveCache()
+
+	s2, _ := session.LoadByID("beta")
+	s2.SaveCache()
+
+	list, err := session.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions() error: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(list))
+	}
+
+	byID := make(map[string]session.SessionSummary)
+	for _, s := range list {
+		byID[s.ID] = s
+	}
+	if byID["alpha"].MsgCount != 4 {
+		t.Errorf("expected 4 messages for alpha, got %d", byID["alpha"].MsgCount)
+	}
+	if byID["beta"].MsgCount != 0 {
+		t.Errorf("expected 0 messages for beta, got %d", byID["beta"].MsgCount)
+	}
+}
+
+func TestListSessionsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+
+	list, err := session.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions() on empty dir error: %v", err)
+	}
+	if len(list) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(list))
 	}
 }
