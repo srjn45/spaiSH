@@ -13,6 +13,7 @@ type Config struct {
 	Routing     RoutingConfig     `toml:"routing"`
 	Permissions PermissionsConfig `toml:"permissions"`
 	Agent       AgentConfig       `toml:"agent"`
+	Fuse        FuseConfig        `toml:"fuse"`
 }
 
 type ProviderConfig struct {
@@ -39,6 +40,12 @@ type AgentConfig struct {
 	Autonomous    bool `toml:"autonomous"`
 	MaxIterations int  `toml:"max_iterations"`
 	Verbose       bool `toml:"verbose"`
+}
+
+type FuseConfig struct {
+	AutoMount      bool   `toml:"auto_mount"`
+	Mountpoint     string `toml:"mountpoint"`
+	TimeoutSeconds int    `toml:"timeout_seconds"`
 }
 
 // Load reads and parses the TOML config file at path.
