@@ -255,6 +255,45 @@ func handleCompactCommand(args []string) {
 	fmt.Println()
 }
 
+// handleHistoryCommand handles `spai history [--session <id>]`.
+// Client-side only — reads history files directly, pipes to less (or more).
+func handleHistoryCommand(args []string) {
+	fs := flag.NewFlagSet("history", flag.ExitOnError)
+	sessionFlag := fs.String("session", "", "named session (default: resolved session ID)")
+	fs.Parse(args)
+
+	id := resolveSessionID(*sessionFlag)
+	sess, err := session.LoadByID(id)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	content, err := sess.ReadAllHistory()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error reading history: %v\n", err)
+		os.Exit(1)
+	}
+	if content == "" {
+		fmt.Printf("No history for session '%s'.\n", id)
+		return
+	}
+
+	pager := "less"
+	if _, err := exec.LookPath("less"); err != nil {
+		pager = "more"
+	}
+
+	cmd := exec.Command(pager)
+	cmd.Stdin = strings.NewReader(content)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		// Fallback: print directly if pager fails
+		fmt.Print(content)
+	}
+}
+
 func main() {
 	// Handle subcommands before flag parsing so flags don't interfere.
 	if len(os.Args) >= 2 {
@@ -268,6 +307,9 @@ func main() {
 		case "compact":
 			handleCompactCommand(os.Args[2:])
 			return
+		case "history":
+			handleHistoryCommand(os.Args[2:])
+			return
 		}
 	}
 
@@ -279,9 +321,12 @@ func main() {
 	sessionFlag := flag.String("session", "", "named session (default: $SPAI_SESSION_ID or 'default')")
 	flag.Usage = func() {
 		fmt.Println("Usage: spai [flags] <query>")
-		fmt.Println("       spai !!               analyse last failed command")
-		fmt.Println("       spai clear [--lines N] wipe session or keep latest N messages")
-		fmt.Println("       spai compact           AI-summarise session history")
+		fmt.Println("       spai !!                  analyse last failed command")
+		fmt.Println("       spai clear [--lines N]   wipe session or keep latest N messages")
+		fmt.Println("       spai compact             AI-summarise session history")
+		fmt.Println("       spai history             browse session history in pager")
+		fmt.Println("       spai sessions            list or switch sessions")
+		fmt.Println("       spai rebuild-context     rebuild AI context from history")
 		fmt.Println()
 		flag.PrintDefaults()
 	}
