@@ -365,6 +365,75 @@ func isShellSession(id, shellID string) bool {
 	return true
 }
 
+// handleSessionsCommand handles `spai sessions [<id> | --reset]`.
+func handleSessionsCommand(args []string) {
+	if len(args) == 0 {
+		handleSessionsListCommand()
+		return
+	}
+
+	if args[0] == "--reset" {
+		if err := session.ClearPinned(); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Pinned session cleared. Falling back to $SPAI_SESSION_ID or 'default'.")
+		return
+	}
+
+	// spai sessions <id> — pin this session
+	id := args[0]
+	sessDir := filepath.Join(session.SessionsDir(), id)
+	if err := os.MkdirAll(sessDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "error creating session dir: %v\n", err)
+		os.Exit(1)
+	}
+	if err := session.WritePinned(id); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Switched to session '%s'. Future queries will use this context.\n", id)
+}
+
+// handleRebuildContextCommand handles `spai rebuild-context [--session <id>]`.
+func handleRebuildContextCommand(args []string) {
+	fs := flag.NewFlagSet("rebuild-context", flag.ExitOnError)
+	sessionFlag := fs.String("session", "", "named session (default: resolved session ID)")
+	fs.Parse(args)
+
+	showDisclaimer()
+
+	if err := socket.EnsureRunning(sockPath(), daemonBin()); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	req := &protocol.Request{
+		Type:      "session",
+		SessionID: resolveSessionID(*sessionFlag),
+		Session: &protocol.SessionRequest{
+			Command: "rebuild-context",
+		},
+	}
+
+	client := socket.NewClient(sockPath())
+	fmt.Println()
+
+	if err := client.Send(req, func(resp protocol.Response) error {
+		switch resp.Type {
+		case "text":
+			fmt.Print(resp.Content)
+		case "error":
+			fmt.Fprintf(os.Stderr, "error: %s\n", resp.Content)
+		}
+		return nil
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println()
+}
+
 func main() {
 	// Handle subcommands before flag parsing so flags don't interfere.
 	if len(os.Args) >= 2 {
@@ -380,6 +449,12 @@ func main() {
 			return
 		case "history":
 			handleHistoryCommand(os.Args[2:])
+			return
+		case "sessions":
+			handleSessionsCommand(os.Args[2:])
+			return
+		case "rebuild-context":
+			handleRebuildContextCommand(os.Args[2:])
 			return
 		}
 	}
