@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"spaios/internal/agent"
 	"spaios/internal/ai"
@@ -109,8 +110,12 @@ func main() {
 				fullText.WriteString(resp.Content)
 			}
 		}
-		sess.AddExchange(req.Query, fullText.String())
-		sess.Save()
+		assistantText := fullText.String()
+		sess.AddExchange(req.Query, assistantText)
+		if err := sess.SaveCache(); err != nil {
+			log.Printf("session save error: %v", err)
+		}
+		go sess.AppendHistory(time.Now().UTC(), req.Query, assistantText, "")
 	}
 
 	onExec := func(req *protocol.Request, enc *json.Encoder) {
@@ -181,14 +186,22 @@ func main() {
 		a := agent.New(provider, agentCfg, confirmFn)
 
 		var fullText strings.Builder
+		var outputText strings.Builder
 		for resp := range a.Run(ctx, req.Agent, sess) {
 			enc.Encode(resp)
 			if resp.Type == "text" {
 				fullText.WriteString(resp.Content)
 			}
+			if resp.Type == "output" {
+				outputText.WriteString(resp.Content)
+			}
 		}
-		sess.AddExchange(req.Agent.Query, fullText.String())
-		sess.Save()
+		assistantText := fullText.String()
+		sess.AddExchange(req.Agent.Query, assistantText)
+		if err := sess.SaveCache(); err != nil {
+			log.Printf("session save error: %v", err)
+		}
+		go sess.AppendHistory(time.Now().UTC(), req.Agent.Query, assistantText, outputText.String())
 	}
 
 	onSession := func(req *protocol.Request, enc *json.Encoder) {
@@ -203,19 +216,21 @@ func main() {
 		switch req.Session.Command {
 		case "clear":
 			if req.Session.Lines == 0 {
-				sess.Clear()
+				if err := sess.Clear(); err != nil {
+					log.Printf("session clear error: %v", err)
+				}
 				enc.Encode(protocol.Response{Type: "text", Content: "Session cleared.\n"})
 			} else {
 				sess.Trim(req.Session.Lines)
+				if err := sess.SaveCache(); err != nil {
+					log.Printf("session save error: %v", err)
+				}
 				enc.Encode(protocol.Response{Type: "text", Content: fmt.Sprintf("Session trimmed to %d messages.\n", req.Session.Lines)})
-			}
-			if err := sess.Save(); err != nil {
-				log.Printf("session save error: %v", err)
 			}
 			enc.Encode(protocol.Response{Type: "done"})
 
 		case "compact":
-			if len(sess.Messages) == 0 {
+			if len(sess.Messages) == 0 && sess.Summary == "" {
 				enc.Encode(protocol.Response{Type: "text", Content: "Nothing to compact — session is empty.\n"})
 				enc.Encode(protocol.Response{Type: "done"})
 				return
@@ -247,7 +262,47 @@ func main() {
 			}
 
 			sess.Compact(summary.String())
-			if err := sess.Save(); err != nil {
+			if err := sess.SaveCache(); err != nil {
+				log.Printf("session save error: %v", err)
+			}
+			enc.Encode(protocol.Response{Type: "done"})
+
+		case "rebuild-context":
+			history, err := sess.ReadAllHistory()
+			if err != nil || history == "" {
+				enc.Encode(protocol.Response{Type: "text", Content: "No history to rebuild from.\n"})
+				enc.Encode(protocol.Response{Type: "done"})
+				return
+			}
+
+			provider, err := rtr.SelectProvider(req.ForceLocal)
+			if err != nil {
+				enc.Encode(protocol.Response{Type: "error", Content: err.Error()})
+				enc.Encode(protocol.Response{Type: "done"})
+				return
+			}
+
+			rebuildMsgs := []ai.Message{
+				{Role: "system", Content: "Summarise this conversation history concisely in one paragraph."},
+				{Role: "user", Content: history},
+			}
+
+			textCh, err := provider.Complete(context.Background(), rebuildMsgs)
+			if err != nil {
+				enc.Encode(protocol.Response{Type: "error", Content: err.Error()})
+				enc.Encode(protocol.Response{Type: "done"})
+				return
+			}
+
+			var summary strings.Builder
+			for chunk := range textCh {
+				summary.WriteString(chunk)
+				enc.Encode(protocol.Response{Type: "text", Content: chunk})
+			}
+
+			sess.Messages = session.ParseHistoryMessages(history)
+			sess.SetSummary(summary.String())
+			if err := sess.SaveCache(); err != nil {
 				log.Printf("session save error: %v", err)
 			}
 			enc.Encode(protocol.Response{Type: "done"})

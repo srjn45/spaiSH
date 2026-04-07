@@ -46,7 +46,8 @@ func collectResponses(ch <-chan protocol.Response) []protocol.Response {
 
 func newSession(t *testing.T) *session.Session {
 	t.Helper()
-	s, _ := session.LoadFrom(t.TempDir() + "/session.json")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	s, _ := session.LoadByID("test")
 	return s
 }
 

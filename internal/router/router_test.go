@@ -3,7 +3,6 @@ package router_test
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -30,7 +29,8 @@ func (s *stubProvider) Complete(_ context.Context, _ []ai.Message) (<-chan strin
 
 func newTestSession(t *testing.T) *session.Session {
 	t.Helper()
-	s, _ := session.LoadFrom(filepath.Join(t.TempDir(), "session.json"))
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	s, _ := session.LoadByID("test")
 	return s
 }
 
