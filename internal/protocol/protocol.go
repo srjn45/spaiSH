@@ -62,6 +62,6 @@ type ConfirmResponse struct {
 
 // SessionRequest is the payload for "session" request type.
 type SessionRequest struct {
-	Command string `json:"command"`         // "clear" | "compact"
+	Command string `json:"command"`         // "clear" | "compact" | "rebuild-context"
 	Lines   int    `json:"lines,omitempty"` // for "clear": keep latest N messages (0 = wipe all)
 }

@@ -35,3 +35,18 @@ func TestRequestSessionFields(t *testing.T) {
 		t.Errorf("unexpected Session: %+v", req2.Session)
 	}
 }
+
+func TestSessionRequestRebuildContext(t *testing.T) {
+	req := protocol.SessionRequest{Command: "rebuild-context"}
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal error: %v", err)
+	}
+	var decoded protocol.SessionRequest
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if decoded.Command != "rebuild-context" {
+		t.Errorf("expected 'rebuild-context', got %q", decoded.Command)
+	}
+}
