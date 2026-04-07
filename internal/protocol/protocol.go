@@ -1,7 +1,7 @@
 package protocol
 
 // Request is sent from spai → spaid over the Unix socket.
-// Types: "query" | "execute" | "llm" | "agent" | "session" | "confirm_response"
+// Types: "query" | "execute" | "llm" | "agent" | "session" | "confirm_response" | "fuse"
 type Request struct {
 	Type            string           `json:"type"`                       // "query" | "execute" | "llm" | "agent"
 	Query           string           `json:"query,omitempty"`            // the user's natural language query
@@ -16,6 +16,7 @@ type Request struct {
 	SessionID       string           `json:"session_id,omitempty"`       // routing key for session file
 	Stdin           string           `json:"stdin,omitempty"`            // content from piped stdin
 	Session         *SessionRequest  `json:"session,omitempty"`          // for "session" request type
+	Fuse            *FuseRequest     `json:"fuse,omitempty"`             // for "fuse" request type
 }
 
 // Response is streamed from spaid → spai as newline-delimited JSON.
@@ -64,4 +65,19 @@ type ConfirmResponse struct {
 type SessionRequest struct {
 	Command string `json:"command"`         // "clear" | "compact" | "rebuild-context"
 	Lines   int    `json:"lines,omitempty"` // for "clear": keep latest N messages (0 = wipe all)
+}
+
+// FuseRequest is the payload for "fuse" request type.
+// spai-fuse sends this when a virtual file under /ai is read.
+type FuseRequest struct {
+	Op             string `json:"op"`              // "explain" | "summarise" | "fix" | "security" | "ask"
+	FileName       string `json:"file_name"`       // real path for file ops; question string for "ask"
+	Content        string `json:"content"`         // file content (empty for "ask")
+	TimeoutSeconds int    `json:"timeout_seconds"` // 0 = no timeout; resolved by spai-fuse from env/config
+}
+
+// FuseResponse is returned by spaid for a "fuse" request.
+type FuseResponse struct {
+	Output string `json:"output"` // full AI response text
+	Error  string `json:"error"`  // non-empty on failure or timeout
 }

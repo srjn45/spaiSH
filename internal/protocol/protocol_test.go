@@ -50,3 +50,38 @@ func TestSessionRequestRebuildContext(t *testing.T) {
 		t.Errorf("expected 'rebuild-context', got %q", decoded.Command)
 	}
 }
+
+func TestFuseRequestRoundTrip(t *testing.T) {
+	orig := protocol.Request{
+		Type: "fuse",
+		Fuse: &protocol.FuseRequest{
+			Op:             "explain",
+			FileName:       "/etc/nginx/nginx.conf",
+			Content:        "server { listen 80; }",
+			TimeoutSeconds: 60,
+		},
+	}
+	data, err := json.Marshal(orig)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got protocol.Request
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Type != "fuse" {
+		t.Errorf("type: got %q want %q", got.Type, "fuse")
+	}
+	if got.Fuse == nil {
+		t.Fatal("Fuse is nil after round-trip")
+	}
+	if got.Fuse.Op != "explain" {
+		t.Errorf("op: got %q want %q", got.Fuse.Op, "explain")
+	}
+	if got.Fuse.FileName != "/etc/nginx/nginx.conf" {
+		t.Errorf("filename: got %q", got.Fuse.FileName)
+	}
+	if got.Fuse.TimeoutSeconds != 60 {
+		t.Errorf("timeout: got %d want 60", got.Fuse.TimeoutSeconds)
+	}
+}
