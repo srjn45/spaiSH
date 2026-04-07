@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"time"
+
 	"spaios/internal/permissions"
 	"spaios/internal/protocol"
 	"spaios/internal/session"
@@ -292,6 +294,75 @@ func handleHistoryCommand(args []string) {
 		// Fallback: print directly if pager fails
 		fmt.Print(content)
 	}
+}
+
+// formatRelativeTime returns a human-readable relative time string.
+func formatRelativeTime(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
+}
+
+// handleSessionsListCommand prints the sessions listing.
+func handleSessionsListCommand() {
+	list, err := session.ListSessions()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	pinned := session.ReadPinned()
+	shellID := os.Getenv("SPAI_SESSION_ID")
+
+	fmt.Println()
+	fmt.Println("  Sessions")
+	fmt.Println("  ────────────────────────────────────")
+
+	for _, s := range list {
+		marker := " "
+		if s.ID == pinned {
+			marker = "*"
+		}
+
+		label := ""
+		if s.ID == pinned {
+			label = "(pinned)"
+		} else if isShellSession(s.ID, shellID) {
+			label = "(shell) "
+		} else {
+			label = "        "
+		}
+
+		msgs := fmt.Sprintf("%d msgs", s.MsgCount)
+		age := formatRelativeTime(s.ModTime)
+
+		fmt.Printf("%s %-12s %s  %-8s  %s\n", marker, s.ID, label, msgs, age)
+	}
+	fmt.Println()
+}
+
+// isShellSession returns true if id is a PID-based (all-numeric) or matches $SPAI_SESSION_ID.
+func isShellSession(id, shellID string) bool {
+	if shellID != "" && id == shellID {
+		return true
+	}
+	if len(id) == 0 {
+		return false
+	}
+	for _, c := range id {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func main() {

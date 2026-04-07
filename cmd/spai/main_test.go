@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"testing"
+	"time"
 
 	"spaios/internal/session"
 )
@@ -93,5 +94,24 @@ func TestReadStdinTruncatesAt64KB(t *testing.T) {
 	}
 	if result[len(result)-len("[truncated]"):] != "[truncated]" {
 		t.Errorf("expected [truncated] suffix")
+	}
+}
+
+func TestFormatRelativeTime(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		d    time.Duration
+		want string
+	}{
+		{30 * time.Second, "just now"},
+		{5 * time.Minute, "5m ago"},
+		{2 * time.Hour, "2h ago"},
+		{3 * 24 * time.Hour, "3d ago"},
+	}
+	for _, c := range cases {
+		got := formatRelativeTime(now.Add(-c.d))
+		if got != c.want {
+			t.Errorf("formatRelativeTime(now-%v) = %q, want %q", c.d, got, c.want)
+		}
 	}
 }
