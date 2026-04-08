@@ -320,7 +320,12 @@ func main() {
 		}
 	}
 
-	if err := socket.Serve(sock, onQuery, onExec, onLLM, onAgent, onSession); err != nil {
+	onFuse := func(req *protocol.Request, enc *json.Encoder) {
+		enc.Encode(protocol.Response{Type: "error", Content: "fuse handler not yet implemented"})
+		enc.Encode(protocol.Response{Type: "done"})
+	}
+
+	if err := socket.Serve(sock, onQuery, onExec, onLLM, onAgent, onSession, onFuse); err != nil {
 		log.Fatalf("socket error: %v", err)
 	}
 }
