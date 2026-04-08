@@ -42,6 +42,10 @@ type AgentConfig struct {
 	Verbose       bool `toml:"verbose"`
 }
 
+// FuseConfig holds settings for the FUSE filesystem feature.
+// AutoMount is read by install.sh to decide whether to enable the spai-fuse
+// systemd service on first install. spai-fuse itself always mounts when invoked —
+// manual 'spai mount'/'spai unmount' work regardless of this setting.
 type FuseConfig struct {
 	AutoMount      bool   `toml:"auto_mount"`
 	Mountpoint     string `toml:"mountpoint"`

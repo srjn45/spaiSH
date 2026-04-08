@@ -3,7 +3,7 @@ package protocol
 // Request is sent from spai → spaid over the Unix socket.
 // Types: "query" | "execute" | "llm" | "agent" | "session" | "confirm_response" | "fuse"
 type Request struct {
-	Type            string           `json:"type"`                       // "query" | "execute" | "llm" | "agent"
+	Type            string           `json:"type"`                       // "query" | "execute" | "llm" | "agent" | "session" | "fuse"
 	Query           string           `json:"query,omitempty"`            // the user's natural language query
 	WorkingDir      string           `json:"working_dir"`                // current directory from spai
 	GitBranch       string           `json:"git_branch,omitempty"`       // current git branch, if any
@@ -76,8 +76,3 @@ type FuseRequest struct {
 	TimeoutSeconds int    `json:"timeout_seconds"` // 0 = no timeout; resolved by spai-fuse from env/config
 }
 
-// FuseResponse is returned by spaid for a "fuse" request.
-type FuseResponse struct {
-	Output string `json:"output"` // full AI response text
-	Error  string `json:"error"`  // non-empty on failure or timeout
-}
