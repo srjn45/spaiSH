@@ -24,3 +24,14 @@ prefer_local = false
 [permissions]
 # Seconds before an elevated (sudo) session permission expires
 sudo_session_timeout = 300
+
+[fuse]
+# Mount the /ai FUSE filesystem automatically on login.
+# Requires /ai to exist (created by install.sh with sudo).
+# Set to false to manage the mount manually with 'spai mount'/'spai unmount'.
+auto_mount = true
+# The filesystem mount point. Must match the directory created by install.sh.
+mountpoint = "/ai"
+# Default AI timeout for FUSE reads in seconds. 0 = no timeout.
+# Override per command: SPAI_TIMEOUT=120 cat /ai/explain/...
+timeout_seconds = 60

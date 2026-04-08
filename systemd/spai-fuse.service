@@ -1,0 +1,13 @@
+[Unit]
+Description=spaiOS FUSE filesystem (/ai)
+After=spaid.service
+Requires=spaid.service
+
+[Service]
+ExecStart=%h/.local/bin/spai-fuse
+ExecStop=fusermount3 -u /ai
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

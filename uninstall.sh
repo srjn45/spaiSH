@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "Stopping spai-fuse service..."
+systemctl --user stop spai-fuse 2>/dev/null || true
+systemctl --user disable spai-fuse 2>/dev/null || true
+
+echo "Removing /ai mount point..."
+if mountpoint -q /ai 2>/dev/null; then
+  fusermount3 -u /ai 2>/dev/null || fusermount -u /ai 2>/dev/null || true
+fi
+if [ -d "/ai" ] && [ -z "$(ls -A /ai 2>/dev/null)" ]; then
+  sudo rmdir /ai
+  echo "  → Removed /ai"
+fi
+
 echo "Stopping and disabling spaid service..."
 systemctl --user stop spaid 2>/dev/null || true
 systemctl --user disable spaid 2>/dev/null || true
@@ -8,7 +21,9 @@ systemctl --user disable spaid 2>/dev/null || true
 echo "Removing files..."
 rm -f "$HOME/.local/bin/spai"
 rm -f "$HOME/.local/bin/spaid"
+rm -f "$HOME/.local/bin/spai-fuse"
 rm -f "$HOME/.config/systemd/user/spaid.service"
+rm -f "$HOME/.config/systemd/user/spai-fuse.service"
 rm -f "$HOME/.local/share/spaios/spaid.sock"
 
 systemctl --user daemon-reload
