@@ -48,7 +48,7 @@ func ParsePath(path string) (ParsedPath, error) {
 	rest := trimmed[idx:] // includes leading slash
 
 	if !ValidOps[op] {
-		return ParsedPath{}, fmt.Errorf("[spaiOS error: unknown operation %q — valid: explain, summarise, fix, security, ask]", op)
+		return ParsedPath{}, fmt.Errorf("[spaiOS error: unknown operation '%s' — valid: explain, summarise, fix, security, ask]", op)
 	}
 
 	if op == "ask" {
