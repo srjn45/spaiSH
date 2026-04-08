@@ -31,9 +31,16 @@ systemctl --user enable --now spaid
 echo "Creating FUSE mount point..."
 if [ ! -d "/ai" ]; then
   sudo mkdir -p /ai
-  echo "  → Created /ai"
+  sudo chown "$USER" /ai
+  echo "  → Created /ai (owned by $USER)"
 else
-  echo "  → /ai already exists"
+  # Ensure current user owns it (fusermount3 requires user to own the mountpoint)
+  if [ "$(stat -c '%U' /ai)" != "$USER" ]; then
+    sudo chown "$USER" /ai
+    echo "  → Fixed /ai ownership → $USER"
+  else
+    echo "  → /ai already exists"
+  fi
 fi
 
 echo "Installing spai-fuse systemd service..."
