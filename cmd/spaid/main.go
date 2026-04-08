@@ -81,7 +81,14 @@ func main() {
 	}
 
 	cloud := ai.NewCloudProvider(cfg.Provider.Endpoint, cfg.APIKey(), cfg.Provider.Model)
-	local := ai.NewLocalProvider(cfg.Local.OllamaEndpoint, localModel)
+	var local ai.Provider
+	switch llmState.ActiveRuntime {
+	case "bitnet":
+		rt, _ := llm.Get("bitnet")
+		local = ai.NewOpenAICompatProvider(rt.Endpoint, localModel)
+	default: // "ollama" or unset
+		local = ai.NewLocalProvider(cfg.Local.OllamaEndpoint, localModel)
+	}
 	rtr := router.New(cfg, cloud, local)
 
 	sock := sockPath()

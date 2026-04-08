@@ -14,12 +14,16 @@ import (
 // recommendedModels is the curated list shown to new users by `spai llm list`.
 var recommendedModels = []struct {
 	Name        string
+	Runtime     string
 	Description string
 }{
-	{"qwen2.5-coder:7b", "Best for coding tasks, fits in 8 GB RAM"},
-	{"llama3.2:3b", "Fast general assistant, fits in 4 GB RAM"},
-	{"phi4-mini", "Compact model, great on low-end hardware"},
-	{"mistral:7b", "Strong general-purpose model, 8 GB RAM"},
+	{"qwen2.5-coder:7b", "ollama", "Best for coding tasks, fits in 8 GB RAM"},
+	{"llama3.2:3b", "ollama", "Fast general assistant, fits in 4 GB RAM"},
+	{"phi4-mini", "ollama", "Compact model, great on low-end hardware"},
+	{"mistral:7b", "ollama", "Strong general-purpose model, 8 GB RAM"},
+	{"BitNet-b1.58-2B-4T", "bitnet", "Microsoft 1-bit model, 2B params, extreme CPU efficiency"},
+	{"BitNet-b1.58-3B", "bitnet", "Microsoft 1-bit model, 3B params, stronger reasoning"},
+	{"Llama3-8B-1.58-100B-tokens", "bitnet", "Llama 3 8B in 1-bit, best BitNet quality"},
 }
 
 // Manager orchestrates LLM runtime and model management for spaid.
@@ -55,7 +59,7 @@ func (m *Manager) Handle(req *protocol.LLMRequest) <-chan protocol.Response {
 		case "status":
 			m.handleStatus(ch)
 		case "install":
-			m.handleInstall(ch)
+			m.handleInstall(ch, req.Args)
 		case "list":
 			m.handleList(ch)
 		case "pull":
@@ -64,6 +68,8 @@ func (m *Manager) Handle(req *protocol.LLMRequest) <-chan protocol.Response {
 			m.handleUse(ch, req.Args)
 		case "remove":
 			m.handleRemove(ch, req.Args)
+		case "use-runtime":
+			m.handleUseRuntime(ch, req.Args)
 		default:
 			ch <- protocol.Response{Type: "error", Content: fmt.Sprintf("unknown llm command %q — try: status, install, list, pull, use", req.Command)}
 			ch <- protocol.Response{Type: "done"}
@@ -105,55 +111,77 @@ func (m *Manager) ollamaModels() ([]string, error) {
 }
 
 func (m *Manager) handleStatus(ch chan<- protocol.Response) {
-	running := m.isOllamaRunning()
-	status := "stopped"
-	if running {
-		status = "running"
+	activeRuntime := m.state.ActiveRuntime
+	if activeRuntime == "" {
+		activeRuntime = "ollama"
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Runtime:       ollama (%s)\n", status))
-	sb.WriteString(fmt.Sprintf("Endpoint:      %s\n", m.ollamaURL))
+	sb.WriteString(fmt.Sprintf("Runtime:       %s\n", activeRuntime))
 	sb.WriteString(fmt.Sprintf("Active model:  %s\n", m.state.ActiveModel))
 
-	if running {
-		models, err := m.ollamaModels()
-		if err == nil && len(models) > 0 {
-			sb.WriteString(fmt.Sprintf("Installed models (%d):\n", len(models)))
-			for _, model := range models {
-				marker := "  "
-				if model == m.state.ActiveModel || strings.HasPrefix(model, m.state.ActiveModel+":") {
-					marker = "* "
-				}
-				sb.WriteString(fmt.Sprintf("  %s%s\n", marker, model))
-			}
-		} else if err == nil {
-			sb.WriteString("Installed models: none — run 'spai llm pull <model>' to download one\n")
+	switch activeRuntime {
+	case "bitnet":
+		rt, _ := Get("bitnet")
+		sb.WriteString(fmt.Sprintf("Endpoint:      %s\n", rt.Endpoint))
+		sb.WriteString("\nBitNet runs inference on-demand (no persistent daemon).\n")
+		sb.WriteString(fmt.Sprintf("To start server: %s\n", rt.StartCmd))
+	default: // ollama
+		running := m.isOllamaRunning()
+		status := "stopped"
+		if running {
+			status = "running"
 		}
-	} else {
-		sb.WriteString("\nOllama is not running. To start it: ollama serve\n")
-		sb.WriteString("To install Ollama:                  spai llm install\n")
+		sb.WriteString(fmt.Sprintf("Endpoint:      %s\n", m.ollamaURL))
+		sb.WriteString(fmt.Sprintf("Status:        %s\n", status))
+		if running {
+			models, err := m.ollamaModels()
+			if err == nil && len(models) > 0 {
+				sb.WriteString(fmt.Sprintf("Installed models (%d):\n", len(models)))
+				for _, model := range models {
+					marker := "  "
+					if model == m.state.ActiveModel || strings.HasPrefix(model, m.state.ActiveModel+":") {
+						marker = "* "
+					}
+					sb.WriteString(fmt.Sprintf("  %s%s\n", marker, model))
+				}
+			} else if err == nil {
+				sb.WriteString("Installed models: none — run 'spai llm pull <model>' to download one\n")
+			}
+		} else {
+			sb.WriteString("\nOllama is not running. To start it: ollama serve\n")
+			sb.WriteString("To install Ollama:                  spai llm install\n")
+		}
 	}
 
 	ch <- protocol.Response{Type: "text", Content: sb.String()}
 	ch <- protocol.Response{Type: "done"}
 }
 
-func (m *Manager) handleInstall(ch chan<- protocol.Response) {
-	if m.isOllamaRunning() {
-		ch <- protocol.Response{Type: "text", Content: "Ollama is already installed and running.\nRun 'spai llm list' to see available models.\n"}
-		ch <- protocol.Response{Type: "done"}
-		return
+func (m *Manager) handleInstall(ch chan<- protocol.Response, args []string) {
+	runtimeName := m.state.ActiveRuntime
+	if len(args) > 0 {
+		runtimeName = args[0]
+	}
+	if runtimeName == "" {
+		runtimeName = "ollama"
 	}
 
-	rt, err := Get("ollama")
+	rt, err := Get(runtimeName)
 	if err != nil {
 		ch <- protocol.Response{Type: "error", Content: err.Error()}
 		ch <- protocol.Response{Type: "done"}
 		return
 	}
 
-	ch <- protocol.Response{Type: "text", Content: "The following command will install Ollama:\n\n"}
+	// Quick already-running check for Ollama; BitNet has no persistent daemon to check.
+	if runtimeName == "ollama" && m.isOllamaRunning() {
+		ch <- protocol.Response{Type: "text", Content: "Ollama is already installed and running.\nRun 'spai llm list' to see available models.\n"}
+		ch <- protocol.Response{Type: "done"}
+		return
+	}
+
+	ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("The following commands will install %s:\n\n", rt.Name)}
 
 	plan := make([]protocol.CommandItem, len(rt.InstallCmds))
 	for i, cmd := range rt.InstallCmds {
@@ -164,6 +192,10 @@ func (m *Manager) handleInstall(ch chan<- protocol.Response) {
 		}
 	}
 	ch <- protocol.Response{Type: "plan", Plan: plan}
+
+	if runtimeName != m.state.ActiveRuntime {
+		ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("\nAfter install, activate with: spai llm use-runtime %s\n", runtimeName)}
+	}
 	ch <- protocol.Response{Type: "done"}
 }
 
@@ -187,10 +219,17 @@ func (m *Manager) handleList(ch chan<- protocol.Response) {
 		}
 	}
 
-	sb.WriteString("Recommended models (run 'spai llm pull <name>' to install):\n")
-	for _, r := range recommendedModels {
-		sb.WriteString(fmt.Sprintf("  %-30s %s\n", r.Name, r.Description))
+	activeRuntime := m.state.ActiveRuntime
+	if activeRuntime == "" {
+		activeRuntime = "ollama"
 	}
+	sb.WriteString(fmt.Sprintf("Recommended models for %s (run 'spai llm pull <name>' to install):\n", activeRuntime))
+	for _, r := range recommendedModels {
+		if r.Runtime == activeRuntime {
+			sb.WriteString(fmt.Sprintf("  %-40s %s\n", r.Name, r.Description))
+		}
+	}
+	sb.WriteString("\nTo switch runtimes: spai llm install <runtime>  (ollama, bitnet)\n")
 
 	ch <- protocol.Response{Type: "text", Content: sb.String()}
 	ch <- protocol.Response{Type: "done"}
@@ -234,6 +273,30 @@ func (m *Manager) handleRemove(ch chan<- protocol.Response, args []string) {
 			Display: tier.Display(),
 		}},
 	}
+	ch <- protocol.Response{Type: "done"}
+}
+
+func (m *Manager) handleUseRuntime(ch chan<- protocol.Response, args []string) {
+	if len(args) == 0 {
+		ch <- protocol.Response{Type: "error", Content: "usage: spai llm use-runtime <runtime>\nexample: spai llm use-runtime bitnet"}
+		ch <- protocol.Response{Type: "done"}
+		return
+	}
+	name := args[0]
+	if _, err := Get(name); err != nil {
+		ch <- protocol.Response{Type: "error", Content: err.Error()}
+		ch <- protocol.Response{Type: "done"}
+		return
+	}
+	m.state.mu.Lock()
+	m.state.ActiveRuntime = name
+	m.state.mu.Unlock()
+	if err := m.state.Save(); err != nil {
+		ch <- protocol.Response{Type: "error", Content: fmt.Sprintf("failed to save state: %v", err)}
+		ch <- protocol.Response{Type: "done"}
+		return
+	}
+	ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("Active runtime set to: %s\nRestart spaid for the change to take effect: systemctl --user restart spaid\n", name)}
 	ch <- protocol.Response{Type: "done"}
 }
 
