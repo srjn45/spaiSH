@@ -400,6 +400,53 @@ func handleSessionsCommand(args []string) {
 	fmt.Printf("Switched to session '%s'. Future queries will use this context.\n", id)
 }
 
+// handleMountCommand handles `spai mount [--at <mountpoint>]`.
+func handleMountCommand(args []string) {
+	fs := flag.NewFlagSet("mount", flag.ExitOnError)
+	at := fs.String("at", "", "custom mountpoint for this session (default: from config or /ai)")
+	fs.Parse(args)
+
+	fuseBin := filepath.Join(filepath.Dir(daemonBin()), "spai-fuse")
+	var cmd *exec.Cmd
+	if *at != "" {
+		cmd = exec.Command(fuseBin, "--mountpoint="+*at)
+	} else {
+		cmd = exec.Command(fuseBin)
+	}
+	cmd.Env = os.Environ()
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: failed to start spai-fuse: %v\n", err)
+		fmt.Fprintf(os.Stderr, "hint: make sure spai-fuse is installed in %s\n", filepath.Dir(fuseBin))
+		os.Exit(1)
+	}
+	fmt.Println("FUSE filesystem starting. Use 'spai unmount' to stop.")
+}
+
+// handleUnmountCommand handles `spai unmount [--at <mountpoint>]`.
+func handleUnmountCommand(args []string) {
+	fs := flag.NewFlagSet("unmount", flag.ExitOnError)
+	at := fs.String("at", "/ai", "mountpoint to unmount")
+	fs.Parse(args)
+
+	// Try fusermount3 first (modern systems), fall back to fusermount.
+	cmd := exec.Command("fusermount3", "-u", *at)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		cmd = exec.Command("fusermount", "-u", *at)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err2 := cmd.Run(); err2 != nil {
+			fmt.Fprintf(os.Stderr, "error: could not unmount %s: %v\n", *at, err)
+			os.Exit(1)
+		}
+	}
+	fmt.Printf("FUSE filesystem unmounted from %s.\n", *at)
+}
+
 // handleRebuildContextCommand handles `spai rebuild-context [--session <id>]`.
 func handleRebuildContextCommand(args []string) {
 	fs := flag.NewFlagSet("rebuild-context", flag.ExitOnError)
@@ -461,6 +508,12 @@ func main() {
 		case "rebuild-context":
 			handleRebuildContextCommand(os.Args[2:])
 			return
+		case "mount":
+			handleMountCommand(os.Args[2:])
+			return
+		case "unmount":
+			handleUnmountCommand(os.Args[2:])
+			return
 		}
 	}
 
@@ -478,6 +531,8 @@ func main() {
 		fmt.Println("       spai history             browse session history in pager")
 		fmt.Println("       spai sessions            list or switch sessions")
 		fmt.Println("       spai rebuild-context     rebuild AI context from history")
+		fmt.Println("       spai mount [--at <mp>]   mount the FUSE AI filesystem")
+		fmt.Println("       spai unmount [--at <mp>] unmount the FUSE AI filesystem")
 		fmt.Println()
 		flag.PrintDefaults()
 	}
