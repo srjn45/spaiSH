@@ -1,7 +1,35 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:claude.ai)"
+      "WebFetch(domain:claude.ai)",
+      "Bash(go mod:*)",
+      "Bash(go get:*)",
+      "Bash(mkdir -p cmd/spai cmd/spaid internal/config internal/protocol internal/permissions internal/ai internal/router internal/session internal/executor internal/socket config systemd)",
+      "Bash(go build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(go test:*)",
+      "Bash(chmod +x install.sh uninstall.sh)",
+      "Bash(./spai llm:*)",
+      "Bash(go fmt:*)",
+      "Bash(gofmt:*)",
+      "Bash(go vet:*)",
+      "Read(//tmp/**)",
+      "Bash(./spai --help)",
+      "Bash(git:*)",
+      "Bash(xargs ls:*)",
+      "Bash(xargs cat:*)",
+      "Bash(gh auth:*)",
+      "Bash(gh repo:*)",
+      "Bash(go run:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(tee /tmp/test_out.txt)",
+      "Bash(go doc:*)",
+      "Bash(/tmp/spai_test)",
+      "Bash(bash -n install.sh)",
+      "Bash(bash -n uninstall.sh)",
+      "Bash(bash -n /home/srajan/Development/spaiOS/install.sh)"
     ]
   }
 }

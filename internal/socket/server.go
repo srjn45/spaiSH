@@ -25,12 +25,9 @@ type AgentHandler func(req *protocol.Request, enc *json.Encoder, dec *json.Decod
 // SessionHandler processes a session management request (clear/compact).
 type SessionHandler func(req *protocol.Request, enc *json.Encoder)
 
-// FuseHandler processes a FUSE virtual file read request and writes Response chunks to enc.
-type FuseHandler func(req *protocol.Request, enc *json.Encoder)
-
 // Serve starts a Unix domain socket server at sockPath.
 // Blocks until the listener is closed or an unrecoverable error occurs.
-func Serve(sockPath string, onQuery QueryHandler, onExec ExecHandler, onLLM LLMHandler, onAgent AgentHandler, onSession SessionHandler, onFuse FuseHandler) error {
+func Serve(sockPath string, onQuery QueryHandler, onExec ExecHandler, onLLM LLMHandler, onAgent AgentHandler, onSession SessionHandler) error {
 	os.Remove(sockPath)
 	os.MkdirAll(sockPath[:len(sockPath)-len("/spaid.sock")], 0700)
 
@@ -45,11 +42,11 @@ func Serve(sockPath string, onQuery QueryHandler, onExec ExecHandler, onLLM LLMH
 		if err != nil {
 			return nil
 		}
-		go handleConn(conn, onQuery, onExec, onLLM, onAgent, onSession, onFuse)
+		go handleConn(conn, onQuery, onExec, onLLM, onAgent, onSession)
 	}
 }
 
-func handleConn(conn net.Conn, onQuery QueryHandler, onExec ExecHandler, onLLM LLMHandler, onAgent AgentHandler, onSession SessionHandler, onFuse FuseHandler) {
+func handleConn(conn net.Conn, onQuery QueryHandler, onExec ExecHandler, onLLM LLMHandler, onAgent AgentHandler, onSession SessionHandler) {
 	defer conn.Close()
 
 	dec := json.NewDecoder(conn)
@@ -71,8 +68,6 @@ func handleConn(conn net.Conn, onQuery QueryHandler, onExec ExecHandler, onLLM L
 		onAgent(&req, enc, dec)
 	case "session":
 		onSession(&req, enc)
-	case "fuse":
-		onFuse(&req, enc)
 	default:
 		enc.Encode(protocol.Response{Type: "error", Content: "unknown request type: " + req.Type})
 	}

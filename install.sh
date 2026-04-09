@@ -10,7 +10,6 @@ echo "Building spaiOS..."
 cd "$REPO_DIR"
 go build -o "$INSTALL_DIR/spai" ./cmd/spai/
 go build -o "$INSTALL_DIR/spaid" ./cmd/spaid/
-go build -o "$INSTALL_DIR/spai-fuse" ./cmd/spai-fuse/
 
 echo "Installing config..."
 mkdir -p "$CONFIG_DIR"
@@ -28,39 +27,6 @@ cp "$REPO_DIR/systemd/spaid.service" "$SYSTEMD_DIR/spaid.service"
 systemctl --user daemon-reload
 systemctl --user enable --now spaid
 
-echo "Creating FUSE mount point..."
-if [ ! -d "/ai" ]; then
-  sudo mkdir -p /ai
-  sudo chown "$USER" /ai
-  echo "  → Created /ai (owned by $USER)"
-else
-  # Ensure current user owns it (fusermount3 requires user to own the mountpoint)
-  if [ "$(stat -c '%U' /ai)" != "$USER" ]; then
-    sudo chown "$USER" /ai
-    echo "  → Fixed /ai ownership → $USER"
-  else
-    echo "  → /ai already exists"
-  fi
-fi
-
-echo "Installing spai-fuse systemd service..."
-cp "$REPO_DIR/systemd/spai-fuse.service" "$SYSTEMD_DIR/spai-fuse.service"
-systemctl --user daemon-reload
-
-# Read auto_mount from config if it exists, default to true
-AUTO_MOUNT="true"
-if [ -f "$CONFIG_DIR/spaid.toml" ]; then
-  if grep -q 'auto_mount\s*=\s*false' "$CONFIG_DIR/spaid.toml"; then
-    AUTO_MOUNT="false"
-  fi
-fi
-
-if [ "$AUTO_MOUNT" = "true" ]; then
-  systemctl --user enable --now spai-fuse
-  echo "  → spai-fuse enabled and started"
-else
-  echo "  → auto_mount = false in config — skipping start (run 'spai mount' manually)"
-fi
 
 # Inject per-shell session ID into detected shell rc files.
 # The literal $$ in the exported value expands at shell startup to the PID of
@@ -89,7 +55,6 @@ echo "  1. Edit ~/.config/spaios/spaid.toml — set your API endpoint and model.
 echo "  2. Set your API key:  export SPAI_API_KEY='your-key'  (add to ~/.bashrc)"
 echo "  3. Restart your shell (or run: source ~/.bashrc) to activate session isolation."
 echo "  4. Run: spai 'is my system healthy?'"
-echo "  5. The /ai FUSE filesystem is now mounted. Try: cat /ai/explain/etc/fstab"
 echo ""
 echo "Or to use a local model instead:"
 echo "  Install a local model runtime, then set prefer_local = true in spaid.toml"

@@ -52,23 +52,6 @@ func loadSession(id string) *session.Session {
 	return sess
 }
 
-// buildFusePrompt returns the AI prompt for a FUSE virtual file read.
-func buildFusePrompt(r *protocol.FuseRequest) string {
-	switch r.Op {
-	case "explain":
-		return fmt.Sprintf("Explain what this file does (%s):\n%s", r.FileName, r.Content)
-	case "summarise":
-		return fmt.Sprintf("Summarise this file (%s) in 3-5 sentences:\n%s", r.FileName, r.Content)
-	case "fix":
-		return fmt.Sprintf("Return a corrected version of this file (%s). Output only the fixed file content, no explanation:\n%s", r.FileName, r.Content)
-	case "security":
-		return fmt.Sprintf("Audit this file (%s) for security issues. List each issue with its severity (critical/high/medium/low):\n%s", r.FileName, r.Content)
-	case "ask":
-		return fmt.Sprintf("Answer this Linux system question concisely: %s", r.FileName)
-	default:
-		return fmt.Sprintf("User asked about %q: %s", r.Op, r.FileName)
-	}
-}
 
 func main() {
 	logPath := filepath.Join(filepath.Dir(sockPath()), "spaid.log")
@@ -338,47 +321,7 @@ func main() {
 		}
 	}
 
-	onFuse := func(req *protocol.Request, enc *json.Encoder) {
-		if req.Fuse == nil {
-			enc.Encode(protocol.Response{Type: "error", Content: "[spaiOS error: missing fuse payload]"})
-			enc.Encode(protocol.Response{Type: "done"})
-			return
-		}
-
-		ctx := context.Background()
-		if req.Fuse.TimeoutSeconds > 0 {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, time.Duration(req.Fuse.TimeoutSeconds)*time.Second)
-			defer cancel()
-		}
-
-		provider, err := rtr.SelectProvider(false)
-		if err != nil {
-			enc.Encode(protocol.Response{Type: "error", Content: "[spaiOS error: " + err.Error() + "]"})
-			enc.Encode(protocol.Response{Type: "done"})
-			return
-		}
-
-		messages := []ai.Message{{Role: "user", Content: buildFusePrompt(req.Fuse)}}
-		textCh, err := provider.Complete(ctx, messages)
-		if err != nil {
-			if ctx.Err() != nil {
-				secs := req.Fuse.TimeoutSeconds
-				enc.Encode(protocol.Response{Type: "error", Content: fmt.Sprintf("[spaiOS error: request timed out after %ds — try SPAI_TIMEOUT=%d]", secs, secs*2)})
-			} else {
-				enc.Encode(protocol.Response{Type: "error", Content: "[spaiOS error: " + err.Error() + "]"})
-			}
-			enc.Encode(protocol.Response{Type: "done"})
-			return
-		}
-
-		for chunk := range textCh {
-			enc.Encode(protocol.Response{Type: "text", Content: chunk})
-		}
-		enc.Encode(protocol.Response{Type: "done"})
-	}
-
-	if err := socket.Serve(sock, onQuery, onExec, onLLM, onAgent, onSession, onFuse); err != nil {
+	if err := socket.Serve(sock, onQuery, onExec, onLLM, onAgent, onSession); err != nil {
 		log.Fatalf("socket error: %v", err)
 	}
 }
