@@ -52,6 +52,41 @@ func loadSession(id string) *session.Session {
 	return sess
 }
 
+const shellSystemPrompt = `You are an AI assistant embedded in the user's terminal shell.
+Be concise — one short paragraph maximum.
+When suggesting a specific command, wrap it in backticks.
+Do not use markdown code blocks — plain text only.`
+
+func shellUserMessage(ev *protocol.ShellEvent) string {
+	switch ev.Trigger {
+	case "error":
+		return fmt.Sprintf("Command: %s\nOutput: %s\nExit code: %d\n\nWhat went wrong and how do I fix it?",
+			ev.Command, ev.Output, ev.ExitCode)
+	case "prompt":
+		return ev.Query
+	case "pattern":
+		return fmt.Sprintf("I've run this sequence multiple times:\n%s\n\nCreate a concise shell alias or function to automate it.",
+			ev.Command)
+	default: // "rethink" and unknown
+		if ev.Query != "" {
+			return ev.Query
+		}
+		return fmt.Sprintf("Command: %s\nOutput: %s\nExit code: %d\n\nWhat went wrong and how do I fix it?",
+			ev.Command, ev.Output, ev.ExitCode)
+	}
+}
+
+func buildShellMessages(ev *protocol.ShellEvent, sess *session.Session) []ai.Message {
+	sysMsg := shellSystemPrompt + "\n\nWorking directory: " + ev.CWD
+	msgs := []ai.Message{{Role: "system", Content: sysMsg}}
+	if ev.Trigger == "rethink" && ev.FullHistory != "" {
+		msgs = append(msgs, session.ParseHistoryMessages(ev.FullHistory)...)
+	} else {
+		msgs = append(msgs, sess.MessagesForPrompt()...)
+	}
+	msgs = append(msgs, ai.Message{Role: "user", Content: shellUserMessage(ev)})
+	return msgs
+}
 
 func main() {
 	logPath := filepath.Join(filepath.Dir(sockPath()), "spaid.log")
@@ -321,7 +356,46 @@ func main() {
 		}
 	}
 
-	if err := socket.Serve(sock, onQuery, onExec, onLLM, onAgent, onSession); err != nil {
+	onShell := func(req *protocol.Request, enc *json.Encoder) {
+		if req.Shell == nil {
+			enc.Encode(protocol.Response{Type: "error", Content: "missing shell payload"})
+			enc.Encode(protocol.Response{Type: "done"})
+			return
+		}
+		ev := req.Shell
+		sess := loadSession(req.SessionID)
+		provider, err := rtr.SelectProvider(req.ForceLocal)
+		if err != nil {
+			enc.Encode(protocol.Response{Type: "error", Content: err.Error()})
+			enc.Encode(protocol.Response{Type: "done"})
+			return
+		}
+
+		msgs := buildShellMessages(ev, sess)
+		textCh, err := provider.Complete(context.Background(), msgs)
+		if err != nil {
+			enc.Encode(protocol.Response{Type: "error", Content: err.Error()})
+			enc.Encode(protocol.Response{Type: "done"})
+			return
+		}
+
+		var fullText strings.Builder
+		for chunk := range textCh {
+			fullText.WriteString(chunk)
+			enc.Encode(protocol.Response{Type: "text", Content: chunk})
+		}
+		enc.Encode(protocol.Response{Type: "done"})
+
+		userMsg := shellUserMessage(ev)
+		aiReply := fullText.String()
+		sess.AddExchange(userMsg, aiReply)
+		if err := sess.SaveCache(); err != nil {
+			log.Printf("session save error: %v", err)
+		}
+		go sess.AppendHistory(time.Now().UTC(), userMsg, aiReply, "")
+	}
+
+	if err := socket.Serve(sock, onQuery, onExec, onLLM, onAgent, onSession, onShell); err != nil {
 		log.Fatalf("socket error: %v", err)
 	}
 }
