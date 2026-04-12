@@ -30,10 +30,10 @@ func IsNaturalLanguage(line string) bool {
 		return false
 	}
 	first := parts[0]
-	if knownBuiltins[first] {
+	if _, err := exec.LookPath(first); err == nil {
 		return false
 	}
-	if _, err := exec.LookPath(first); err == nil {
+	if knownBuiltins[first] {
 		return false
 	}
 	return true
