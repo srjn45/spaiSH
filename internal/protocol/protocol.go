@@ -3,7 +3,7 @@ package protocol
 // Request is sent from spai → spaid over the Unix socket.
 // Types: "query" | "execute" | "llm" | "agent" | "session" | "shell" | "confirm_response"
 type Request struct {
-	Type            string           `json:"type"`                       // "query" | "execute" | "llm" | "agent" | "session"
+	Type            string           `json:"type"`                       // "query" | "execute" | "llm" | "agent" | "session" | "shell" | "confirm_response"
 	Query           string           `json:"query,omitempty"`            // the user's natural language query
 	WorkingDir      string           `json:"working_dir"`                // current directory from spai
 	GitBranch       string           `json:"git_branch,omitempty"`       // current git branch, if any
@@ -78,4 +78,3 @@ type ShellEvent struct {
 	Query       string `json:"query,omitempty"`         // user's natural language input ("prompt" trigger)
 	FullHistory string `json:"full_history,omitempty"`  // populated only on "rethink" trigger
 }
-
