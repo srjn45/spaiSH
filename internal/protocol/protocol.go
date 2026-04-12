@@ -1,7 +1,7 @@
 package protocol
 
 // Request is sent from spai → spaid over the Unix socket.
-// Types: "query" | "execute" | "llm" | "agent" | "session" | "confirm_response"
+// Types: "query" | "execute" | "llm" | "agent" | "session" | "shell" | "confirm_response"
 type Request struct {
 	Type            string           `json:"type"`                       // "query" | "execute" | "llm" | "agent" | "session"
 	Query           string           `json:"query,omitempty"`            // the user's natural language query
@@ -16,6 +16,7 @@ type Request struct {
 	SessionID       string           `json:"session_id,omitempty"`       // routing key for session file
 	Stdin           string           `json:"stdin,omitempty"`            // content from piped stdin
 	Session         *SessionRequest  `json:"session,omitempty"`          // for "session" request type
+	Shell           *ShellEvent      `json:"shell,omitempty"`            // for "shell" request type
 }
 
 // Response is streamed from spaid → spai as newline-delimited JSON.
@@ -66,4 +67,15 @@ type SessionRequest struct {
 	Lines   int    `json:"lines,omitempty"` // for "clear": keep latest N messages (0 = wipe all)
 }
 
+// ShellEvent is the payload for "shell" request type.
+// spaiSH sends this when a shell event requires AI input.
+type ShellEvent struct {
+	Trigger     string `json:"trigger"`                 // "error" | "prompt" | "pattern" | "rethink"
+	Command     string `json:"command"`                 // command that was run (empty for freeform prompts)
+	Output      string `json:"output"`                  // merged stdout+stderr from PTY, tail-trimmed to 8KB
+	ExitCode    int    `json:"exit_code"`               // exit code of the command
+	CWD         string `json:"cwd"`                     // working directory at time of event
+	Query       string `json:"query,omitempty"`         // user's natural language input ("prompt" trigger)
+	FullHistory string `json:"full_history,omitempty"`  // populated only on "rethink" trigger
+}
 

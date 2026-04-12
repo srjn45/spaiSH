@@ -50,3 +50,37 @@ func TestSessionRequestRebuildContext(t *testing.T) {
 		t.Errorf("expected 'rebuild-context', got %q", decoded.Command)
 	}
 }
+
+func TestShellEventRoundTrip(t *testing.T) {
+	req := protocol.Request{
+		Type:      "shell",
+		SessionID: "spaish_1234",
+		Shell: &protocol.ShellEvent{
+			Trigger:  "error",
+			Command:  "systemctl restart nginx",
+			Output:   "Job for nginx.service failed.",
+			ExitCode: 1,
+			CWD:      "/home/user",
+		},
+	}
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got protocol.Request
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Shell == nil {
+		t.Fatal("Shell is nil after unmarshal")
+	}
+	if got.Shell.Trigger != "error" {
+		t.Errorf("Trigger: got %q, want %q", got.Shell.Trigger, "error")
+	}
+	if got.Shell.ExitCode != 1 {
+		t.Errorf("ExitCode: got %d, want 1", got.Shell.ExitCode)
+	}
+	if got.Shell.CWD != "/home/user" {
+		t.Errorf("CWD: got %q, want %q", got.Shell.CWD, "/home/user")
+	}
+}
