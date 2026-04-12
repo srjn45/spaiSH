@@ -63,14 +63,19 @@ func shellUserMessage(ev *protocol.ShellEvent) string {
 		return fmt.Sprintf("Command: %s\nOutput: %s\nExit code: %d\n\nWhat went wrong and how do I fix it?",
 			ev.Command, ev.Output, ev.ExitCode)
 	case "prompt":
+		if ev.Query == "" {
+			return "What should I do next?"
+		}
 		return ev.Query
 	case "pattern":
 		return fmt.Sprintf("I've run this sequence multiple times:\n%s\n\nCreate a concise shell alias or function to automate it.",
 			ev.Command)
-	default: // "rethink" and unknown
+	case "rethink":
 		if ev.Query != "" {
 			return ev.Query
 		}
+		return "Please reconsider your previous response."
+	default:
 		return fmt.Sprintf("Command: %s\nOutput: %s\nExit code: %d\n\nWhat went wrong and how do I fix it?",
 			ev.Command, ev.Output, ev.ExitCode)
 	}
