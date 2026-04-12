@@ -25,13 +25,14 @@ type ShellOutput struct {
 
 // PTY wraps a shell process in a pseudo-terminal.
 type PTY struct {
-	ptmx    *os.File
-	cmd     *exec.Cmd
-	events  chan ShellOutput
-	mu      sync.Mutex
-	lastCmd string
-	lastCWD string
-	stopCh  chan struct{}
+	ptmx      *os.File
+	cmd       *exec.Cmd
+	events    chan ShellOutput
+	mu        sync.Mutex
+	lastCmd   string
+	lastCWD   string
+	stopCh    chan struct{}
+	closeOnce sync.Once
 }
 
 // New starts shellBin in a PTY and injects the spaiSH hook.
@@ -120,7 +121,9 @@ func (p *PTY) ClearLine() {
 
 // Close terminates the shell process and cleans up.
 func (p *PTY) Close() error {
-	close(p.stopCh)
+	p.closeOnce.Do(func() {
+		close(p.stopCh)
+	})
 	p.ptmx.Close()
 	return p.cmd.Process.Kill()
 }
@@ -190,11 +193,16 @@ func (p *PTY) processChunk(data []byte, outputBuf *strings.Builder) []byte {
 			output := TailTrim(strings.TrimRight(outputBuf.String(), "\r\n"), 8*1024)
 			outputBuf.Reset()
 
-			p.events <- ShellOutput{
+			so := ShellOutput{
 				Command:  cmd,
 				Output:   output,
 				ExitCode: exitCode,
 				CWD:      cwd,
+			}
+			select {
+			case p.events <- so:
+			default:
+				// consumer not keeping up; drop event to avoid stalling the PTY
 			}
 		}
 		// Unknown null-delimited content: discard silently
