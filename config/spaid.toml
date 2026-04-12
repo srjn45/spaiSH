@@ -24,3 +24,13 @@ prefer_local = false
 [permissions]
 # Seconds before an elevated (sudo) session permission expires
 sudo_session_timeout = 300
+
+[spaish]
+# Shell to wrap. Defaults to $SHELL environment variable, then bash.
+shell = ""
+# Exit codes >= this value trigger AI suggestions. 1 = any failure.
+error_threshold = 1
+# Times a pattern must repeat before a suggestion is shown.
+pattern_min_count = 3
+# Number of recent command+output pairs kept in the smart context window.
+context_window = 20

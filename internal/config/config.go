@@ -13,6 +13,7 @@ type Config struct {
 	Routing     RoutingConfig     `toml:"routing"`
 	Permissions PermissionsConfig `toml:"permissions"`
 	Agent       AgentConfig       `toml:"agent"`
+	Spaish      SpaishConfig      `toml:"spaish"`
 }
 
 type ProviderConfig struct {
@@ -41,6 +42,13 @@ type AgentConfig struct {
 	Verbose       bool `toml:"verbose"`
 }
 
+// SpaishConfig holds configuration for the spaiSH shell wrapper.
+type SpaishConfig struct {
+	Shell           string `toml:"shell"`
+	ErrorThreshold  int    `toml:"error_threshold"`
+	PatternMinCount int    `toml:"pattern_min_count"`
+	ContextWindow   int    `toml:"context_window"`
+}
 
 // Load reads and parses the TOML config file at path.
 func Load(path string) (*Config, error) {
