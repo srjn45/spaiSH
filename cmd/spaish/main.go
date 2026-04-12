@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	"golang.org/x/term"
@@ -18,6 +19,33 @@ import (
 	"spaios/internal/socket"
 	"spaios/internal/spaish"
 )
+
+// rawMode guards concurrent terminal mode transitions.
+type rawMode struct {
+	mu    sync.Mutex
+	state *term.State
+	fd    int
+}
+
+func newRawMode(fd int) (*rawMode, error) {
+	s, err := term.MakeRaw(fd)
+	if err != nil {
+		return nil, err
+	}
+	return &rawMode{state: s, fd: fd}, nil
+}
+
+func (r *rawMode) restore() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	term.Restore(r.fd, r.state)
+}
+
+func (r *rawMode) reenter() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.state, _ = term.MakeRaw(r.fd)
+}
 
 func sockPath() string {
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
@@ -74,22 +102,19 @@ func main() {
 	}
 
 	// Set raw mode on stdin
-	rawState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	rm, err := newRawMode(int(os.Stdin.Fd()))
 	if err != nil {
 		p.Close()
 		log.Fatalf("raw mode: %v", err)
 	}
-	restore := func() {
-		term.Restore(int(os.Stdin.Fd()), rawState)
-	}
-	defer restore()
+	defer rm.restore()
 
 	// Handle Ctrl+C / SIGTERM: restore terminal before exit
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		restore()
+		rm.restore()
 		p.Close()
 		os.Exit(0)
 	}()
@@ -117,7 +142,7 @@ func main() {
 
 			if ev.ExitCode >= errorThreshold {
 				// Switch to cooked mode for the conversation UI
-				restore()
+				rm.restore()
 				convEv := &protocol.ShellEvent{
 					Trigger:  "error",
 					Command:  ev.Command,
@@ -129,7 +154,7 @@ func main() {
 					fmt.Fprintf(os.Stderr, "spaiSH: %v\n", err)
 				}
 				// Return to raw mode
-				rawState, _ = term.MakeRaw(int(os.Stdin.Fd()))
+				rm.reenter()
 				continue
 			}
 
@@ -145,7 +170,7 @@ func main() {
 
 			suggestion := patternSuggestion(result)
 			// Switch to cooked mode to read y/n
-			restore()
+			rm.restore()
 			fmt.Printf("  \033[2m\U0001f4a1 %s (y/n)\033[0m ", suggestion)
 			var yn string
 			fmt.Scanln(&yn)
@@ -159,19 +184,19 @@ func main() {
 			} else {
 				suppressed[key] = true
 			}
-			rawState, _ = term.MakeRaw(int(os.Stdin.Fd()))
+			rm.reenter()
 		}
 	}()
 
 	// Input loop — intercepts Enter to check for ? prefix or natural language
-	inputLoop(p, conv, &rawState)
+	inputLoop(p, conv, rm.restore, rm.reenter)
 
 	<-eventDone
 }
 
 // inputLoop reads stdin in raw mode, forwarding characters to the PTY.
 // On Enter, checks if the buffered line is a ? prompt or natural language.
-func inputLoop(p *spaish.PTY, conv *spaish.Conversation, rawStatePtr **term.State) {
+func inputLoop(p *spaish.PTY, conv *spaish.Conversation, restore, reenter func()) {
 	var lineBuf strings.Builder
 	buf := make([]byte, 32)
 
@@ -192,25 +217,25 @@ func inputLoop(p *spaish.PTY, conv *spaish.Conversation, rawStatePtr **term.Stat
 				// Explicit AI prompt — clear PTY line, enter conversation
 				p.ClearLine()
 				query := strings.TrimSpace(strings.TrimPrefix(line, "?"))
-				term.Restore(int(os.Stdin.Fd()), *rawStatePtr)
+				restore()
 				ev := &protocol.ShellEvent{
 					Trigger: "prompt",
 					Query:   query,
 					CWD:     p.LastCWD(),
 				}
 				conv.Start(ev)
-				*rawStatePtr, _ = term.MakeRaw(int(os.Stdin.Fd()))
+				reenter()
 			} else if spaish.IsNaturalLanguage(line) {
 				// Natural language — clear PTY line, enter conversation
 				p.ClearLine()
-				term.Restore(int(os.Stdin.Fd()), *rawStatePtr)
+				restore()
 				ev := &protocol.ShellEvent{
 					Trigger: "prompt",
 					Query:   line,
 					CWD:     p.LastCWD(),
 				}
 				conv.Start(ev)
-				*rawStatePtr, _ = term.MakeRaw(int(os.Stdin.Fd()))
+				reenter()
 			} else {
 				// Regular shell command — record and forward
 				p.SetLastCommand(line)
