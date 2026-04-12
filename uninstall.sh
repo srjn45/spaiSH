@@ -8,6 +8,7 @@ systemctl --user disable spaid 2>/dev/null || true
 echo "Removing files..."
 rm -f "$HOME/.local/bin/spai"
 rm -f "$HOME/.local/bin/spaid"
+rm -f "$HOME/.local/bin/spaish"
 rm -f "$HOME/.config/systemd/user/spaid.service"
 rm -f "$HOME/.local/share/spaios/spaid.sock"
 

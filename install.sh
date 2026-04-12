@@ -10,6 +10,7 @@ echo "Building spaiOS..."
 cd "$REPO_DIR"
 go build -o "$INSTALL_DIR/spai" ./cmd/spai/
 go build -o "$INSTALL_DIR/spaid" ./cmd/spaid/
+go build -o "$INSTALL_DIR/spaish" ./cmd/spaish/
 
 echo "Installing config..."
 mkdir -p "$CONFIG_DIR"
@@ -55,6 +56,7 @@ echo "  1. Edit ~/.config/spaios/spaid.toml — set your API endpoint and model.
 echo "  2. Set your API key:  export SPAI_API_KEY='your-key'  (add to ~/.bashrc)"
 echo "  3. Restart your shell (or run: source ~/.bashrc) to activate session isolation."
 echo "  4. Run: spai 'is my system healthy?'"
+echo "  5. Or launch the AI shell: spaish"
 echo ""
 echo "Or to use a local model instead:"
 echo "  Install a local model runtime, then set prefer_local = true in spaid.toml"
