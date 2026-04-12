@@ -16,7 +16,7 @@ import (
 var dissatisfactionPhrases = []string{
 	"wrong", "doesn't work", "not right", "try again",
 	"that's not", "still failing", "not working", "doesn't help",
-	"no,", "no that", "incorrect",
+	"no", "incorrect",
 }
 
 // runPhrases trigger execution of the last suggested command.
@@ -145,9 +145,28 @@ func (c *Conversation) sendEvent(ev *protocol.ShellEvent) error {
 	return err
 }
 
-// extractCommand returns the first backtick-quoted string in reply.
-// Returns empty string if no backtick command is found.
+// extractCommand returns the first executable command from reply.
+// Checks triple-backtick fenced blocks first, then single-backtick inline code.
 func extractCommand(reply string) string {
+	// Try triple-backtick fenced block first
+	tripleStart := strings.Index(reply, "```")
+	if tripleStart >= 0 {
+		rest := reply[tripleStart+3:]
+		tripleEnd := strings.Index(rest, "```")
+		if tripleEnd >= 0 {
+			block := strings.TrimSpace(rest[:tripleEnd])
+			// Skip optional language tag on first line
+			lines := strings.Split(block, "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line != "" && !isLanguageTag(line) {
+					return line
+				}
+			}
+		}
+	}
+
+	// Fall back to single-backtick inline code
 	start := strings.Index(reply, "`")
 	if start < 0 {
 		return ""
@@ -157,6 +176,17 @@ func extractCommand(reply string) string {
 		return ""
 	}
 	return reply[start+1 : start+1+end]
+}
+
+// isLanguageTag returns true if s looks like a fenced code block language tag.
+func isLanguageTag(s string) bool {
+	for _, r := range s {
+		if r == ' ' || r == '\t' {
+			return false
+		}
+	}
+	// A language tag is a single word with no spaces; commands always have args or slashes
+	return !strings.ContainsAny(s, " /\\-")
 }
 
 // runInline executes cmd synchronously with stdout/stderr connected to the terminal.
@@ -169,7 +199,9 @@ func runInline(cmd string) {
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	c.Stdin = os.Stdin
-	c.Run()
+	if err := c.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "[exit: %v]\n", err)
+	}
 }
 
 // readFullHistory reads history.md from the session directory.
