@@ -25,6 +25,12 @@ func IsNaturalLanguage(line string) bool {
 	if line == "" || strings.HasPrefix(line, "?") {
 		return false
 	}
+	// Shell metacharacters (;, |, &, <, >, (, ), {, }) mean this is a shell
+	// command (pipeline, redirect, compound command, etc.) — not NL.
+	if strings.ContainsAny(line, ";|&<>(){}") {
+		return false
+	}
+	// Split on whitespace to get the first word, then check PATH and builtins.
 	parts := strings.Fields(line)
 	if len(parts) == 0 {
 		return false

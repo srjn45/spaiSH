@@ -1,7 +1,6 @@
 package spaish
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -64,8 +63,11 @@ func IsRunRequest(msg string) bool {
 
 // Start initiates an AI conversation with the given initial event.
 // It streams the first AI reply, then enters a follow-up loop until the user exits.
-// The caller must have restored cooked terminal mode before calling Start.
-func (c *Conversation) Start(initialEvent *protocol.ShellEvent) error {
+//
+// stdinCh is the shared stdin channel owned by the caller (cmd/spaish/main.go).
+// The caller must have restored cooked terminal mode before calling Start, and
+// must NOT read from stdinCh concurrently — Start is the sole consumer while active.
+func (c *Conversation) Start(initialEvent *protocol.ShellEvent, stdinCh <-chan []byte) error {
 	if initialEvent.Trigger == "error" {
 		fmt.Printf("\n\033[2m[exit %d]\033[0m\n", initialEvent.ExitCode)
 	}
@@ -74,13 +76,13 @@ func (c *Conversation) Start(initialEvent *protocol.ShellEvent) error {
 		return err
 	}
 
-	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Printf("\n \033[2myou\033[0m \033[1m▶\033[0m ")
-		if !scanner.Scan() {
+		line, ok := ReadLine(stdinCh)
+		if !ok {
 			return nil
 		}
-		line := strings.TrimSpace(scanner.Text())
+		line = strings.TrimSpace(line)
 
 		// Empty line or "done" exits conversation
 		if line == "" || strings.EqualFold(line, "done") {
@@ -116,6 +118,22 @@ func (c *Conversation) Start(initialEvent *protocol.ShellEvent) error {
 			return err
 		}
 	}
+}
+
+// ReadLine reads one line from stdinCh, accumulating chunks until a '\n' is
+// seen. Returns the line (without trailing newline/CR) and true, or ("", false)
+// if the channel is closed before a newline arrives.
+func ReadLine(stdinCh <-chan []byte) (string, bool) {
+	var buf strings.Builder
+	for data := range stdinCh {
+		s := string(data)
+		if nl := strings.IndexByte(s, '\n'); nl >= 0 {
+			buf.WriteString(s[:nl])
+			return strings.TrimRight(buf.String(), "\r"), true
+		}
+		buf.WriteString(s)
+	}
+	return "", false
 }
 
 // sendEvent sends a ShellEvent to spaid and streams the response to stdout.

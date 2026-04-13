@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -28,9 +29,10 @@ var recommendedModels = []struct {
 
 // Manager orchestrates LLM runtime and model management for spaid.
 type Manager struct {
-	state     *State
-	client    *http.Client
-	ollamaURL string // overridable for tests; defaults to registry endpoint
+	state       *State
+	client      *http.Client
+	ollamaURL   string               // overridable for tests; defaults to registry endpoint
+	stepCheckFn func(string) bool    // nil = run real shell check; overridable for tests
 }
 
 // NewManager creates a Manager using the Ollama endpoint from the registry.
@@ -47,6 +49,14 @@ func NewManager(state *State) *Manager {
 // Used in tests to point at an httptest server.
 func NewManagerWithClient(state *State, client *http.Client, ollamaURL string) *Manager {
 	return &Manager{state: state, client: client, ollamaURL: ollamaURL}
+}
+
+// WithStepChecker returns a copy of the Manager with a custom step-check function.
+// Used in tests to simulate partial or complete installs without real disk state.
+func (m *Manager) WithStepChecker(fn func(cmd string) bool) *Manager {
+	copy := *m
+	copy.stepCheckFn = fn
+	return &copy
 }
 
 // Handle dispatches an LLMRequest and returns a channel of Response chunks.
@@ -68,10 +78,12 @@ func (m *Manager) Handle(req *protocol.LLMRequest) <-chan protocol.Response {
 			m.handleUse(ch, req.Args)
 		case "remove":
 			m.handleRemove(ch, req.Args)
+		case "uninstall":
+			m.handleUninstall(ch, req.Args)
 		case "use-runtime":
 			m.handleUseRuntime(ch, req.Args)
 		default:
-			ch <- protocol.Response{Type: "error", Content: fmt.Sprintf("unknown llm command %q — try: status, install, list, pull, use", req.Command)}
+			ch <- protocol.Response{Type: "error", Content: fmt.Sprintf("unknown llm command %q — try: status, install, uninstall, list, pull, use", req.Command)}
 			ch <- protocol.Response{Type: "done"}
 		}
 	}()
@@ -174,17 +186,32 @@ func (m *Manager) handleInstall(ch chan<- protocol.Response, args []string) {
 		return
 	}
 
-	// Quick already-running check for Ollama; BitNet has no persistent daemon to check.
-	if runtimeName == "ollama" && m.isOllamaRunning() {
-		ch <- protocol.Response{Type: "text", Content: "Ollama is already installed and running.\nRun 'spai llm list' to see available models.\n"}
+	// Determine which install steps are still pending by running per-step checks.
+	pendingCmds, doneCount := m.pendingInstallSteps(rt)
+
+	if len(pendingCmds) == 0 {
+		msg := fmt.Sprintf("%s is already installed.\n", rt.Name)
+		if runtimeName == "ollama" && m.isOllamaRunning() {
+			msg = "Ollama is already installed and running.\n"
+		}
+		msg += "Run 'spai llm list' to see available models.\n"
+		ch <- protocol.Response{Type: "text", Content: msg}
 		ch <- protocol.Response{Type: "done"}
 		return
 	}
 
-	ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("The following commands will install %s:\n\n", rt.Name)}
+	if doneCount > 0 {
+		total := len(rt.InstallCmds)
+		ch <- protocol.Response{Type: "text", Content: fmt.Sprintf(
+			"Resuming %s install — %d/%d steps already done, running remaining %d:\n\n",
+			rt.Name, doneCount, total, len(pendingCmds),
+		)}
+	} else {
+		ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("The following commands will install %s:\n\n", rt.Name)}
+	}
 
-	plan := make([]protocol.CommandItem, len(rt.InstallCmds))
-	for i, cmd := range rt.InstallCmds {
+	plan := make([]protocol.CommandItem, len(pendingCmds))
+	for i, cmd := range pendingCmds {
 		plan[i] = protocol.CommandItem{
 			Command: cmd,
 			Tier:    rt.InstallTier.String(),
@@ -196,6 +223,63 @@ func (m *Manager) handleInstall(ch chan<- protocol.Response, args []string) {
 	if runtimeName != m.state.ActiveRuntime {
 		ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("\nAfter install, activate with: spai llm use-runtime %s\n", runtimeName)}
 	}
+	ch <- protocol.Response{Type: "done"}
+}
+
+// pendingInstallSteps returns the subset of rt.InstallCmds whose step-check
+// indicates the step has not yet completed, plus the count of already-done steps.
+func (m *Manager) pendingInstallSteps(rt Runtime) (pending []string, doneCount int) {
+	checkDone := m.stepCheckFn
+	if checkDone == nil {
+		checkDone = func(cmd string) bool {
+			return exec.Command("sh", "-c", cmd).Run() == nil
+		}
+	}
+	for i, cmd := range rt.InstallCmds {
+		if i < len(rt.InstallStepChecks) && rt.InstallStepChecks[i] != "" {
+			if checkDone(rt.InstallStepChecks[i]) {
+				doneCount++
+				continue
+			}
+		}
+		pending = append(pending, cmd)
+	}
+	return
+}
+
+func (m *Manager) handleUninstall(ch chan<- protocol.Response, args []string) {
+	runtimeName := m.state.ActiveRuntime
+	if len(args) > 0 {
+		runtimeName = args[0]
+	}
+	if runtimeName == "" {
+		runtimeName = "ollama"
+	}
+
+	rt, err := Get(runtimeName)
+	if err != nil {
+		ch <- protocol.Response{Type: "error", Content: err.Error()}
+		ch <- protocol.Response{Type: "done"}
+		return
+	}
+
+	if len(rt.UninstallCmds) == 0 {
+		ch <- protocol.Response{Type: "error", Content: fmt.Sprintf("automatic uninstall is not supported for runtime %q on this platform", runtimeName)}
+		ch <- protocol.Response{Type: "done"}
+		return
+	}
+
+	ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("The following commands will uninstall %s:\n\n", rt.Name)}
+	plan := make([]protocol.CommandItem, len(rt.UninstallCmds))
+	for i, cmd := range rt.UninstallCmds {
+		tier := permissions.Classify(cmd)
+		plan[i] = protocol.CommandItem{
+			Command: cmd,
+			Tier:    tier.String(),
+			Display: tier.Display(),
+		}
+	}
+	ch <- protocol.Response{Type: "plan", Plan: plan}
 	ch <- protocol.Response{Type: "done"}
 }
 
@@ -242,9 +326,26 @@ func (m *Manager) handlePull(ch chan<- protocol.Response, args []string) {
 		return
 	}
 	model := args[0]
-	cmd := fmt.Sprintf("ollama pull %s", model)
+
+	activeRuntime := m.state.ActiveRuntime
+	if activeRuntime == "" {
+		activeRuntime = "ollama"
+	}
+
+	var cmd, msg string
+	switch activeRuntime {
+	case "bitnet":
+		dir := "~/.local/share/spaios/bitnet"
+		venv := "~/.local/share/spaios/bitnet-venv"
+		cmd = fmt.Sprintf("cd %s && %s/bin/python setup_env.py -md models/%s -q i2_s", dir, venv, model)
+		msg = fmt.Sprintf("Downloading and quantizing BitNet model %q...\n", model)
+	default:
+		cmd = fmt.Sprintf("ollama pull %s", model)
+		msg = fmt.Sprintf("Downloading model %q from Ollama registry...\n", model)
+	}
+
 	tier := permissions.Classify(cmd)
-	ch <- protocol.Response{Type: "text", Content: fmt.Sprintf("Downloading model %q from Ollama registry...\n", model)}
+	ch <- protocol.Response{Type: "text", Content: msg}
 	ch <- protocol.Response{
 		Type: "plan",
 		Plan: []protocol.CommandItem{{
@@ -263,7 +364,20 @@ func (m *Manager) handleRemove(ch chan<- protocol.Response, args []string) {
 		return
 	}
 	model := args[0]
-	cmd := fmt.Sprintf("ollama rm %s", model)
+
+	activeRuntime := m.state.ActiveRuntime
+	if activeRuntime == "" {
+		activeRuntime = "ollama"
+	}
+
+	var cmd string
+	switch activeRuntime {
+	case "bitnet":
+		cmd = fmt.Sprintf("rm -rf ~/.local/share/spaios/bitnet/models/%s", model)
+	default:
+		cmd = fmt.Sprintf("ollama rm %s", model)
+	}
+
 	tier := permissions.Classify(cmd)
 	ch <- protocol.Response{
 		Type: "plan",

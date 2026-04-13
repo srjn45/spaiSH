@@ -6,21 +6,89 @@ import (
 	"spaios/internal/spaish"
 )
 
+func TestReadLine(t *testing.T) {
+	tests := []struct {
+		name     string
+		chunks   [][]byte
+		wantLine string
+		wantOK   bool
+	}{
+		{
+			name:     "single chunk with newline",
+			chunks:   [][]byte{[]byte("hello\n")},
+			wantLine: "hello",
+			wantOK:   true,
+		},
+		{
+			name:     "CRLF newline stripped",
+			chunks:   [][]byte{[]byte("hello\r\n")},
+			wantLine: "hello",
+			wantOK:   true,
+		},
+		{
+			name:     "multiple chunks before newline",
+			chunks:   [][]byte{[]byte("hel"), []byte("lo\n")},
+			wantLine: "hello",
+			wantOK:   true,
+		},
+		{
+			name:     "channel closed before newline",
+			chunks:   [][]byte{[]byte("partial")},
+			wantLine: "",
+			wantOK:   false,
+		},
+		{
+			name:     "empty line (bare newline)",
+			chunks:   [][]byte{[]byte("\n")},
+			wantLine: "",
+			wantOK:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ch := make(chan []byte, len(tt.chunks)+1)
+			for _, c := range tt.chunks {
+				ch <- c
+			}
+			if !tt.wantOK {
+				close(ch) // simulate closed channel
+			} else {
+				// close after sending so ReadLine can drain then see newline
+				go func() { close(ch) }()
+			}
+
+			got, ok := spaish.ReadLine(ch)
+			if ok != tt.wantOK {
+				t.Errorf("ok = %v, want %v", ok, tt.wantOK)
+			}
+			if got != tt.wantLine {
+				t.Errorf("line = %q, want %q", got, tt.wantLine)
+			}
+		})
+	}
+}
+
 func TestIsNaturalLanguage(t *testing.T) {
 	tests := []struct {
 		input string
 		want  bool
 	}{
-		{"ls -la", false},              // binary in PATH
-		{"cd /tmp", false},             // known built-in
-		{"export FOO=bar", false},      // known built-in
-		{"echo hello", false},          // known built-in
-		{"git status", false},          // binary in PATH
-		{"? what is my disk usage", false}, // ? prefix handled by caller
-		{"", false},                    // empty
-		{"show me disk usage", true},   // NL: not in PATH, not a built-in
-		{"how do I find large files", true}, // NL
-		{"restart nginx please", true}, // "restart" not typically in PATH
+		{"ls -la", false},                                  // binary in PATH
+		{"cd /tmp", false},                                 // known built-in
+		{"export FOO=bar", false},                          // known built-in
+		{"echo hello", false},                              // known built-in
+		{"git status", false},                              // binary in PATH
+		{"? what is my disk usage", false},                 // ? prefix handled by caller
+		{"", false},                                        // empty
+		{"show me disk usage", true},                       // NL: not in PATH, not a built-in
+		{"how do I find large files", true},                // NL
+		{"restart nginx please", true},                     // "restart" not typically in PATH
+		{"pwd; printf 'hello'", false},                     // semicolon → shell command
+		{"ls | grep foo", false},                           // pipe → shell command
+		{"echo hi && echo there", false},                   // && → shell command
+		{"cat file > out.txt", false},                      // redirect → shell command
+		{"ls /etc/hostname; printf '\\nMARKER\\n'", false}, // sentinel command form
 	}
 	for _, tt := range tests {
 		got := spaish.IsNaturalLanguage(tt.input)

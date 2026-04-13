@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -33,6 +34,11 @@ type PTY struct {
 	lastCWD   string
 	stopCh    chan struct{}
 	closeOnce sync.Once
+	// atPrompt is true when the shell has just displayed a prompt and is
+	// waiting for the next command (i.e. SPAISH marker received). It becomes
+	// false the moment a regular command is forwarded, so that passwords and
+	// other subprocess input are never mis-routed to the AI.
+	atPrompt atomic.Bool
 }
 
 // New starts shellBin in a PTY and injects the spaiSH hook.
@@ -99,12 +105,21 @@ func (p *PTY) Write(b []byte) (int, error) {
 	return p.ptmx.Write(b)
 }
 
-// SetLastCommand stores the command last entered by the user.
+// SetLastCommand stores the command last entered by the user and marks the
+// PTY as no longer at the shell prompt (a subprocess may now need stdin).
 // Called from the input loop in cmd/spaish/main.go on Enter.
 func (p *PTY) SetLastCommand(cmd string) {
 	p.mu.Lock()
 	p.lastCmd = cmd
 	p.mu.Unlock()
+	p.atPrompt.Store(false)
+}
+
+// AtPrompt reports whether the shell is currently waiting for a new command
+// (i.e. the last SPAISH marker has been received and no command has been
+// forwarded since). Use this to gate NL / "?" detection in the input loop.
+func (p *PTY) AtPrompt() bool {
+	return p.atPrompt.Load()
 }
 
 // LastCWD returns the working directory from the most recent SPAISH marker.
@@ -189,6 +204,7 @@ func (p *PTY) processChunk(data []byte, outputBuf *strings.Builder) []byte {
 			p.lastCmd = ""
 			p.lastCWD = cwd
 			p.mu.Unlock()
+			p.atPrompt.Store(true)
 
 			output := TailTrim(strings.TrimRight(outputBuf.String(), "\r\n"), 8*1024)
 			outputBuf.Reset()
