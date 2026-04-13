@@ -180,7 +180,9 @@ func main() {
 					Command: strings.Join(result.Commands, "\n"),
 					CWD:     ev.CWD,
 				}
-				conv.Start(convEv)
+				if err := conv.Start(convEv); err != nil {
+					fmt.Fprintf(os.Stderr, "spaiSH: %v\n", err)
+				}
 			} else {
 				suppressed[key] = true
 			}
@@ -223,7 +225,9 @@ func inputLoop(p *spaish.PTY, conv *spaish.Conversation, restore, reenter func()
 					Query:   query,
 					CWD:     p.LastCWD(),
 				}
-				conv.Start(ev)
+				if err := conv.Start(ev); err != nil {
+					fmt.Fprintf(os.Stderr, "spaiSH: %v\n", err)
+				}
 				reenter()
 			} else if spaish.IsNaturalLanguage(line) {
 				// Natural language — clear PTY line, enter conversation
@@ -234,7 +238,9 @@ func inputLoop(p *spaish.PTY, conv *spaish.Conversation, restore, reenter func()
 					Query:   line,
 					CWD:     p.LastCWD(),
 				}
-				conv.Start(ev)
+				if err := conv.Start(ev); err != nil {
+					fmt.Fprintf(os.Stderr, "spaiSH: %v\n", err)
+				}
 				reenter()
 			} else {
 				// Regular shell command — record and forward
