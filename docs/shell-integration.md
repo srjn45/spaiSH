@@ -2,7 +2,7 @@
 
 ## The `spai` Command
 
-`spai` is the primary interface to spaiOS. It works from any shell — bash, zsh, fish, or any POSIX-compatible shell.
+`spai` is the primary interface to spaiSH. It works from any shell — bash, zsh, fish, or any POSIX-compatible shell.
 
 Your existing shell and workflow are completely unchanged. `spai` is an additional command, not a replacement. Regular shell commands never pass through AI.
 
@@ -71,11 +71,11 @@ spai !!                                       # analyse the last failed command
 
 ## First Run
 
-On first run, spaiOS shows a one-time disclaimer:
+On first run, spaiSH shows a one-time disclaimer:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  spaiOS — experimental personal project
+  spaiSH — experimental personal project
   Not affiliated with any AI provider or Linux distribution.
   You are responsible for your API key usage and costs.
   Run 'spai --legal' for full disclaimer and license.
@@ -97,12 +97,12 @@ This is shown once and never again.
 ### Install
 
 ```bash
-curl -fsSL https://get.spaios.dev/install.sh | bash
+curl -fsSL https://get.spaish.dev/install.sh | bash
 ```
 
 No root required. The installer:
 1. Downloads `spai` and `spaid` binaries to `~/.local/bin/`
-2. Creates default config at `~/.config/spaios/spaid.toml`
+2. Creates default config at `~/.config/spaish/spaid.toml`
 3. Registers `spaid` as a systemd user service
 4. Prints next steps
 
@@ -114,7 +114,7 @@ Set your API key as an environment variable. Add to `~/.bashrc` or `~/.zshrc`:
 export SPAI_API_KEY="your-key-here"
 ```
 
-Then edit `~/.config/spaios/spaid.toml` to point at your provider's endpoint and set your model name.
+Then edit `~/.config/spaish/spaid.toml` to point at your provider's endpoint and set your model name.
 
 ### Using a local model instead
 
@@ -125,12 +125,12 @@ Install Ollama and pull a model:
 ollama pull qwen2.5-coder   # recommended for system tasks
 ```
 
-spaiOS will automatically use Ollama if no API key is set and Ollama is running.
+spaiSH will automatically use Ollama if no API key is set and Ollama is running.
 
 ### Uninstall
 
 ```bash
-curl -fsSL https://get.spaios.dev/uninstall.sh | bash
+curl -fsSL https://get.spaish.dev/uninstall.sh | bash
 ```
 
 Removes all binaries, config, and the systemd service. Your shell rc file is cleaned up.

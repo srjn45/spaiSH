@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"spaios/internal/ai"
-	"spaios/internal/session"
+	"spaish/internal/ai"
+	"spaish/internal/session"
 )
 
 // ---------- LoadByID — new directory layout ----------
@@ -56,7 +56,7 @@ func TestLoadByIDEmptyIDUsesDefault(t *testing.T) {
 	s.AddExchange("q", "a")
 	s.SaveCache()
 
-	cachePath := filepath.Join(dir, "spaios", "sessions", "default", "cache.json")
+	cachePath := filepath.Join(dir, "spaish", "sessions", "default", "cache.json")
 	if _, err := os.Stat(cachePath); err != nil {
 		t.Errorf("expected cache.json at %s, got error: %v", cachePath, err)
 	}
@@ -66,7 +66,7 @@ func TestLoadByIDCorruptFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
 
-	sessDir := filepath.Join(dir, "spaios", "sessions", "corrupt")
+	sessDir := filepath.Join(dir, "spaish", "sessions", "corrupt")
 	os.MkdirAll(sessDir, 0755)
 	os.WriteFile(filepath.Join(sessDir, "cache.json"), []byte("not json{{{"), 0600)
 
@@ -86,7 +86,7 @@ func TestLoadByIDMigratesFlat(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", dir)
 
 	// Create a flat sessions/migrate.json file
-	sessionsDir := filepath.Join(dir, "spaios", "sessions")
+	sessionsDir := filepath.Join(dir, "spaish", "sessions")
 	os.MkdirAll(sessionsDir, 0755)
 	flatData, _ := json.Marshal(map[string]interface{}{
 		"messages": []ai.Message{
@@ -252,7 +252,7 @@ func TestSessionClearRemovesDir(t *testing.T) {
 	s.AddExchange("q", "a")
 	s.SaveCache()
 
-	sessDir := filepath.Join(dir, "spaios", "sessions", "cleartest")
+	sessDir := filepath.Join(dir, "spaish", "sessions", "cleartest")
 	if _, err := os.Stat(sessDir); err != nil {
 		t.Fatalf("session dir should exist before clear: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestSaveCacheFilePermissions(t *testing.T) {
 	s.AddExchange("q", "a")
 	s.SaveCache()
 
-	cachePath := filepath.Join(dir, "spaios", "sessions", "perms", "cache.json")
+	cachePath := filepath.Join(dir, "spaish", "sessions", "perms", "cache.json")
 	info, err := os.Stat(cachePath)
 	if err != nil {
 		t.Fatal(err)

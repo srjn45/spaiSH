@@ -1,4 +1,4 @@
-# spaiOS Phase 1 Design Spec
+# spaiSH Phase 1 Design Spec
 
 **Date:** 2026-04-04
 **Scope:** Core daemon (`spaid`) + shell integration (`spai`) — Phase 1B
@@ -7,7 +7,7 @@
 
 ## Summary
 
-Build the foundational spaiOS layer: a Go daemon (`spaid`) that listens on a Unix socket, and a CLI client (`spai`) that sends queries to it. The daemon handles model routing, session context, and permission classification. The shell is unchanged — AI is opt-in via the `spai` command.
+Build the foundational spaiSH layer: a Go daemon (`spaid`) that listens on a Unix socket, and a CLI client (`spai`) that sends queries to it. The daemon handles model routing, session context, and permission classification. The shell is unchanged — AI is opt-in via the `spai` command.
 
 ---
 
@@ -15,7 +15,7 @@ Build the foundational spaiOS layer: a Go daemon (`spaid`) that listens on a Uni
 
 | Thing | Name |
 |-------|------|
-| Project / OS | spaiOS |
+| Project / OS | spaiSH |
 | CLI command | `spai` |
 | Daemon | `spaid` |
 | Config | `spaid.toml` |
@@ -30,7 +30,7 @@ No references to third-party brands in any distributed artifact.
 
 **Option chosen:** Unix socket daemon + thin CLI client (Option A from brainstorm)
 
-- `spaid` runs as a systemd user service, listens on `~/.local/share/spaios/spaid.sock`
+- `spaid` runs as a systemd user service, listens on `~/.local/share/spaish/spaid.sock`
 - `spai` is a thin client that connects to the socket, streams the response, exits
 - If daemon is not running when `spai` is called, `spai` starts it automatically
 
@@ -45,7 +45,7 @@ spai CLI ──── Unix socket ──── spaid ──── Model Router
 ## Source Layout
 
 ```
-spaios/
+spaish/
 ├── cmd/
 │   ├── spai/               # CLI client
 │   └── spaid/              # Daemon
@@ -134,7 +134,7 @@ One-time disclaimer on first invocation, never shown again:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  spaiOS — experimental personal project
+  spaiSH — experimental personal project
   Not affiliated with any AI provider or Linux distribution.
   You are responsible for your API key usage and costs.
   Run 'spai --legal' for full disclaimer and license.
@@ -146,12 +146,12 @@ One-time disclaimer on first invocation, never shown again:
 ## Install
 
 ```bash
-curl -fsSL https://get.spaios.dev/install.sh | bash
+curl -fsSL https://get.spaish.dev/install.sh | bash
 ```
 
 - No root required
 - Installs to `~/.local/bin/`
-- Config at `~/.config/spaios/spaid.toml`
+- Config at `~/.config/spaish/spaid.toml`
 - Registers systemd user service
 
 ---
@@ -165,7 +165,7 @@ curl -fsSL https://get.spaios.dev/install.sh | bash
 
 ## Success Criteria
 
-A developer can install spaiOS on a fresh Linux machine and use `spai` to diagnose and fix a real system problem within 5 minutes, with no commands executing without their confirmation.
+A developer can install spaiSH on a fresh Linux machine and use `spai` to diagnose and fix a real system problem within 5 minutes, with no commands executing without their confirmation.
 
 ---
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"spaios/internal/permissions"
+	"spaish/internal/permissions"
 )
 
 // Runtime describes a supported local LLM runtime.
@@ -21,7 +21,7 @@ type Runtime struct {
 	InstallTier       permissions.Tier // permission tier for install commands
 }
 
-// SupportedRuntimes is the registry of runtimes spaiOS can manage.
+// SupportedRuntimes is the registry of runtimes spaiSH can manage.
 // Add new runtimes here as they are supported.
 var SupportedRuntimes = map[string]Runtime{
 	"ollama": {
@@ -40,9 +40,9 @@ var SupportedRuntimes = map[string]Runtime{
 		Name:        "bitnet",
 		Description: "Microsoft BitNet — 1-bit quantized LLMs, extreme CPU efficiency, no GPU required",
 		Endpoint:    "http://localhost:8080",
-		DetectCmd:   "test -d ~/.local/share/spaios/bitnet",
-		VersionCmd:  "cd ~/.local/share/spaios/bitnet && git rev-parse --short HEAD",
-		StartCmd:    "~/.local/share/spaios/bitnet/build/bin/llama-server -m ~/.local/share/spaios/bitnet/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf --port 8080 --host 127.0.0.1",
+		DetectCmd:   "test -d ~/.local/share/spaish/bitnet",
+		VersionCmd:  "cd ~/.local/share/spaish/bitnet && git rev-parse --short HEAD",
+		StartCmd:    "~/.local/share/spaish/bitnet/build/bin/llama-server -m ~/.local/share/spaish/bitnet/models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf --port 8080 --host 127.0.0.1",
 		InstallCmds:       bitnetInstallCmds(),
 		InstallStepChecks: bitnetInstallChecks(),
 		UninstallCmds:     bitnetUninstallCmds(),
@@ -57,8 +57,8 @@ var SupportedRuntimes = map[string]Runtime{
 //  3. create a venv and pip-install Python deps (avoids PEP 668 on Debian/Ubuntu 22.04+)
 //  4. run setup_env.py — builds the project with cmake and downloads the model
 func bitnetInstallCmds() []string {
-	dir := "~/.local/share/spaios/bitnet"
-	venv := "~/.local/share/spaios/bitnet-venv"
+	dir := "~/.local/share/spaish/bitnet"
+	venv := "~/.local/share/spaish/bitnet-venv"
 	switch runtime.GOOS {
 	case "linux":
 		return []string{
@@ -86,8 +86,8 @@ func bitnetInstallCmds() []string {
 // Each entry corresponds to the same index in bitnetInstallCmds.
 // A check exits 0 if the step is already complete.
 func bitnetInstallChecks() []string {
-	dir := "~/.local/share/spaios/bitnet"
-	venv := "~/.local/share/spaios/bitnet-venv"
+	dir := "~/.local/share/spaish/bitnet"
+	venv := "~/.local/share/spaish/bitnet-venv"
 	switch runtime.GOOS {
 	case "linux", "darwin":
 		return []string{
@@ -107,7 +107,7 @@ func bitnetInstallChecks() []string {
 
 // bitnetUninstallCmds returns commands to fully remove the BitNet install directory.
 func bitnetUninstallCmds() []string {
-	return []string{"rm -rf ~/.local/share/spaios/bitnet"}
+	return []string{"rm -rf ~/.local/share/spaish/bitnet"}
 }
 
 // ollamaInstallCmds returns the platform-appropriate install commands for Ollama.

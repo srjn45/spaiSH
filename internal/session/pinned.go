@@ -9,10 +9,10 @@ import (
 // PinnedPath returns the path to the pinned_session file.
 func PinnedPath() string {
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "pinned_session")
+		return filepath.Join(d, "spaish", "pinned_session")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "spaios", "pinned_session")
+	return filepath.Join(home, ".local", "share", "spaish", "pinned_session")
 }
 
 // ReadPinned returns the pinned session ID, or "" if no pinned session is set.

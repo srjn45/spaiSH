@@ -10,14 +10,14 @@ import (
 
 const defaultModel = "qwen2.5-coder:7b"
 
-// RuntimeInfo records what spaiOS knows about an installed runtime.
+// RuntimeInfo records what spaiSH knows about an installed runtime.
 type RuntimeInfo struct {
 	Installed bool   `json:"installed"`
 	Version   string `json:"version,omitempty"`
 	Endpoint  string `json:"endpoint"`
 }
 
-// State holds LLM manager state, persisted to ~/.config/spaios/llm-state.json.
+// State holds LLM manager state, persisted to ~/.config/spaish/llm-state.json.
 type State struct {
 	ActiveRuntime string                 `json:"active_runtime"`
 	ActiveModel   string                 `json:"active_model"`
@@ -31,10 +31,10 @@ type State struct {
 // DefaultStatePath returns the canonical state file location.
 func DefaultStatePath() string {
 	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "llm-state.json")
+		return filepath.Join(d, "spaish", "llm-state.json")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "spaios", "llm-state.json")
+	return filepath.Join(home, ".config", "spaish", "llm-state.json")
 }
 
 // LoadState reads state from path. Returns a default state if the file does not exist.

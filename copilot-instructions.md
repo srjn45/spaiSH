@@ -1,4 +1,4 @@
-# GitHub Copilot Configuration for spaiOS
+# GitHub Copilot Configuration for spaiSH
 
 Follow the coding standards and guidelines defined in [rules/CODING_STANDARDS.md](rules/CODING_STANDARDS.md).
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"spaios/internal/executor"
+	"spaish/internal/executor"
 )
 
 func TestExecuteSimpleCommand(t *testing.T) {

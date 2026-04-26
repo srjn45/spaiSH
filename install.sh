@@ -2,11 +2,11 @@
 set -euo pipefail
 
 INSTALL_DIR="$HOME/.local/bin"
-CONFIG_DIR="$HOME/.config/spaios"
+CONFIG_DIR="$HOME/.config/spaish"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Building spaiOS..."
+echo "Building spaiSH..."
 cd "$REPO_DIR"
 go build -o "$INSTALL_DIR/spai" ./cmd/spai/
 go build -o "$INSTALL_DIR/spaid" ./cmd/spaid/
@@ -38,7 +38,7 @@ inject_session_id() {
     if grep -q 'SPAI_SESSION_ID' "$rc_file"; then
       echo "  → SPAI_SESSION_ID already in $rc_file — skipping"
     else
-      printf '\n# spaiOS: per-shell session isolation\nexport SPAI_SESSION_ID=$$\n' >> "$rc_file"
+      printf '\n# spaiSH: per-shell session isolation\nexport SPAI_SESSION_ID=$$\n' >> "$rc_file"
       echo "  → Added SPAI_SESSION_ID to $rc_file"
     fi
   fi
@@ -52,7 +52,7 @@ echo ""
 echo "Installation complete."
 echo ""
 echo "Next steps:"
-echo "  1. Edit ~/.config/spaios/spaid.toml — set your API endpoint and model."
+echo "  1. Edit ~/.config/spaish/spaid.toml — set your API endpoint and model."
 echo "  2. Set your API key:  export SPAI_API_KEY='your-key'  (add to ~/.bashrc)"
 echo "  3. Restart your shell (or run: source ~/.bashrc) to activate session isolation."
 echo "  4. Run: spai 'is my system healthy?'"

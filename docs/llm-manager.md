@@ -1,10 +1,10 @@
 # LLM Manager
 
-spaiOS ships with a built-in LLM manager that helps you install, configure, and switch between local AI models without leaving your terminal. It is designed for users who are new to self-hosted AI.
+spaiSH ships with a built-in LLM manager that helps you install, configure, and switch between local AI models without leaving your terminal. It is designed for users who are new to self-hosted AI.
 
 ## Why
 
-Running `spai` without an API key requires a local model runtime. Setting one up — finding the right software, downloading a model, pointing spaiOS at it — is a multi-step process that stops most beginners. The LLM manager handles all of that with a single command.
+Running `spai` without an API key requires a local model runtime. Setting one up — finding the right software, downloading a model, pointing spaiSH at it — is a multi-step process that stops most beginners. The LLM manager handles all of that with a single command.
 
 ## Commands
 
@@ -19,7 +19,7 @@ spai llm use <model>             # set the active model for local inference
 
 ## How It Works
 
-The LLM manager is built into `spaid` as an extension of the existing model router. It does not make AI API calls — all operations are either system checks or shell commands run through spaiOS's standard confirmation flow.
+The LLM manager is built into `spaid` as an extension of the existing model router. It does not make AI API calls — all operations are either system checks or shell commands run through spaiSH's standard confirmation flow.
 
 ```
 spai llm install
@@ -37,7 +37,7 @@ Every command the LLM manager proposes goes through the permission tier engine b
 
 ## State
 
-The active runtime and model are persisted in `~/.config/spaios/llm-state.json`:
+The active runtime and model are persisted in `~/.config/spaish/llm-state.json`:
 
 ```json
 {
@@ -70,7 +70,7 @@ This file is read by `spaid` at startup. Changes made via `spai llm use` take ef
 
 ## Recommended Models
 
-These models are tested and curated for spaiOS users:
+These models are tested and curated for spaiSH users:
 
 ### Ollama models
 
@@ -95,4 +95,4 @@ Models are downloaded by `setup_env.py` during `spai llm install bitnet`.
 
 ## Backward Compatibility
 
-If you already have Ollama installed and running, spaiOS detects it automatically. `spai llm install` will tell you it's already installed. No migration needed.
+If you already have Ollama installed and running, spaiSH detects it automatically. `spai llm install` will tell you it's already installed. No migration needed.

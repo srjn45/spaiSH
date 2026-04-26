@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"spaios/internal/ai"
-	"spaios/internal/config"
-	"spaios/internal/parser"
-	"spaios/internal/permissions"
-	"spaios/internal/protocol"
-	"spaios/internal/session"
+	"spaish/internal/ai"
+	"spaish/internal/config"
+	"spaish/internal/parser"
+	"spaish/internal/permissions"
+	"spaish/internal/protocol"
+	"spaish/internal/session"
 )
 
 const systemPrompt = `You are a Linux system assistant integrated into the user's shell.

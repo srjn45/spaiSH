@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"spaios/internal/config"
+	"spaish/internal/config"
 )
 
 func TestLoadDefaults(t *testing.T) {

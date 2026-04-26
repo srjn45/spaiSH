@@ -13,27 +13,27 @@ import (
 
 	"time"
 
-	"spaios/internal/permissions"
-	"spaios/internal/protocol"
-	"spaios/internal/session"
-	"spaios/internal/socket"
+	"spaish/internal/permissions"
+	"spaish/internal/protocol"
+	"spaish/internal/session"
+	"spaish/internal/socket"
 )
 
 const disclaimer = `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  spaiOS — experimental personal project
+  spaiSH — experimental personal project
   Not affiliated with any AI provider or Linux distribution.
   You are responsible for your API key usage and costs.
   Run 'spai --legal' for full disclaimer and license.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `
 
-const legalText = `spaiOS is an experimental personal project provided AS IS with no warranties.
+const legalText = `spaiSH is an experimental personal project provided AS IS with no warranties.
 
 You are responsible for all actions taken on your system. Every command is
 shown to you before execution and requires your confirmation.
 
-You must supply your own API key for any cloud AI provider. spaiOS does not
+You must supply your own API key for any cloud AI provider. spaiSH does not
 provide API access and is not affiliated with any AI provider or Linux distribution.
 
 Full license: Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0
@@ -41,10 +41,10 @@ Full license: Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0
 
 func dataDir() string {
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
-		return filepath.Join(d, "spaios")
+		return filepath.Join(d, "spaish")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "spaios")
+	return filepath.Join(home, ".local", "share", "spaish")
 }
 
 func sockPath() string  { return filepath.Join(dataDir(), "spaid.sock") }

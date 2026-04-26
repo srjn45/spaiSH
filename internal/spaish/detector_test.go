@@ -3,7 +3,7 @@ package spaish_test
 import (
 	"testing"
 
-	"spaios/internal/spaish"
+	"spaish/internal/spaish"
 )
 
 func TestReadLine(t *testing.T) {

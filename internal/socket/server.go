@@ -5,7 +5,7 @@ import (
 	"net"
 	"os"
 
-	"spaios/internal/protocol"
+	"spaish/internal/protocol"
 )
 
 // QueryHandler processes a query request and writes Response chunks to enc.

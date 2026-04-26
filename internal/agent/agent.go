@@ -6,11 +6,11 @@ import (
 	"os/exec"
 	"strings"
 
-	"spaios/internal/ai"
-	"spaios/internal/parser"
-	"spaios/internal/permissions"
-	"spaios/internal/protocol"
-	"spaios/internal/session"
+	"spaish/internal/ai"
+	"spaish/internal/parser"
+	"spaish/internal/permissions"
+	"spaish/internal/protocol"
+	"spaish/internal/session"
 )
 
 // Config holds agent runtime settings, derived from spaid.toml [agent] section.

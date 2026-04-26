@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"spaios/internal/llm"
+	"spaish/internal/llm"
 )
 
 func TestLoadStateEmpty(t *testing.T) {

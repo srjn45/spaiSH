@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"spaios/internal/ai"
+	"spaish/internal/ai"
 )
 
 const historyRotateSize = 1 * 1024 * 1024 // 1 MB

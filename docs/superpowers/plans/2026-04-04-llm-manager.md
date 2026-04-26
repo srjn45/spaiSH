@@ -6,7 +6,7 @@
 
 **Architecture:** A new `internal/llm` package (registry + state + manager) is wired into `spaid` as a third socket handler alongside the existing query and execute handlers. The CLI parses `spai llm <cmd>` before the existing flag path and sends an `"llm"` typed request over the socket. Every shell command the manager proposes (Ollama install, model pull) goes through the existing permission tier engine and confirmation flow — no special-casing.
 
-**Tech Stack:** Go 1.22+, existing `spaios` module, `net/http/httptest` for manager tests. No new dependencies.
+**Tech Stack:** Go 1.22+, existing `spaish` module, `net/http/httptest` for manager tests. No new dependencies.
 
 ---
 
@@ -15,7 +15,7 @@
 | File | Action | Responsibility |
 |------|--------|----------------|
 | `internal/protocol/protocol.go` | Modify | Add `LLMRequest` struct; add `LLM` field to `Request` |
-| `internal/llm/state.go` | Create | Read/write `~/.config/spaios/llm-state.json`; active runtime + model |
+| `internal/llm/state.go` | Create | Read/write `~/.config/spaish/llm-state.json`; active runtime + model |
 | `internal/llm/state_test.go` | Create | State persistence tests |
 | `internal/llm/registry.go` | Create | Ollama runtime definition, platform-aware install commands |
 | `internal/llm/registry_test.go` | Create | Registry unit tests |
@@ -116,7 +116,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"spaios/internal/llm"
+	"spaish/internal/llm"
 )
 
 func TestLoadStateEmpty(t *testing.T) {
@@ -214,14 +214,14 @@ import (
 
 const defaultModel = "qwen2.5-coder:7b"
 
-// RuntimeInfo records what spaiOS knows about an installed runtime.
+// RuntimeInfo records what spaiSH knows about an installed runtime.
 type RuntimeInfo struct {
 	Installed bool   `json:"installed"`
 	Version   string `json:"version,omitempty"`
 	Endpoint  string `json:"endpoint"`
 }
 
-// State holds LLM manager state, persisted to ~/.config/spaios/llm-state.json.
+// State holds LLM manager state, persisted to ~/.config/spaish/llm-state.json.
 type State struct {
 	ActiveRuntime string                 `json:"active_runtime"`
 	ActiveModel   string                 `json:"active_model"`
@@ -235,10 +235,10 @@ type State struct {
 // DefaultStatePath returns the canonical state file location.
 func DefaultStatePath() string {
 	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "llm-state.json")
+		return filepath.Join(d, "spaish", "llm-state.json")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "spaios", "llm-state.json")
+	return filepath.Join(home, ".config", "spaish", "llm-state.json")
 }
 
 // LoadState reads state from path. Returns a default state if the file does not exist.
@@ -331,7 +331,7 @@ package llm_test
 import (
 	"testing"
 
-	"spaios/internal/llm"
+	"spaish/internal/llm"
 )
 
 func TestRegistryGetOllama(t *testing.T) {
@@ -408,7 +408,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"spaios/internal/permissions"
+	"spaish/internal/permissions"
 )
 
 // Runtime describes a supported local LLM runtime.
@@ -423,7 +423,7 @@ type Runtime struct {
 	InstallTier permissions.Tier // permission tier for install commands
 }
 
-// SupportedRuntimes is the registry of runtimes spaiOS can manage.
+// SupportedRuntimes is the registry of runtimes spaiSH can manage.
 // Add new runtimes here as they are supported.
 var SupportedRuntimes = map[string]Runtime{
 	"ollama": {
@@ -509,8 +509,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"spaios/internal/llm"
-	"spaios/internal/protocol"
+	"spaish/internal/llm"
+	"spaish/internal/protocol"
 )
 
 // newTestState returns an in-memory state pointing to a temp file.
@@ -747,8 +747,8 @@ import (
 	"strings"
 	"time"
 
-	"spaios/internal/permissions"
-	"spaios/internal/protocol"
+	"spaish/internal/permissions"
+	"spaish/internal/protocol"
 )
 
 // recommendedModels is the curated list shown to new users by `spai llm list`.
@@ -1015,7 +1015,7 @@ import (
 	"net"
 	"os"
 
-	"spaios/internal/protocol"
+	"spaish/internal/protocol"
 )
 
 // QueryHandler processes a query request and writes Response chunks to enc.
@@ -1075,7 +1075,7 @@ func handleConn(conn net.Conn, onQuery QueryHandler, onExec ExecHandler, onLLM L
 In `cmd/spaid/main.go`, add the following imports:
 
 ```go
-"spaios/internal/llm"
+"spaish/internal/llm"
 ```
 
 After the `sess` initialization block (after `session.LoadFrom`), add:

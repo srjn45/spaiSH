@@ -1,4 +1,4 @@
-# Claude Configuration for spaiOS
+# Claude Configuration for spaiSH
 
 Follow the coding standards and guidelines defined in [rules/CODING_STANDARDS.md](../rules/CODING_STANDARDS.md).
 

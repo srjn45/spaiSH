@@ -1,4 +1,4 @@
-module spaios
+module spaish
 
 go 1.25.0
 

@@ -1,6 +1,6 @@
 # Coding Standards & Guidelines
 
-These standards apply to all development work in spaiOS, regardless of which AI assistant you use (Claude, Copilot, or others).
+These standards apply to all development work in spaiSH, regardless of which AI assistant you use (Claude, Copilot, or others).
 
 ## Commits: Small & Meaningful
 

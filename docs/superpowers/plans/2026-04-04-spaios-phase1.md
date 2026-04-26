@@ -1,8 +1,8 @@
-# spaiOS Phase 1 Implementation Plan
+# spaiSH Phase 1 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build `spaid` (Unix socket daemon) and `spai` (CLI client) — the foundational layer of spaiOS that lets users run `spai <query>` from any shell to get AI-assisted system help with confirmation-gated command execution.
+**Goal:** Build `spaid` (Unix socket daemon) and `spai` (CLI client) — the foundational layer of spaiSH that lets users run `spai <query>` from any shell to get AI-assisted system help with confirmation-gated command execution.
 
 **Architecture:** `spai` sends a query + shell context to `spaid` via a Unix domain socket. `spaid` builds a context-aware prompt, calls the configured AI provider (cloud or local Ollama), parses proposed commands from the response, classifies each by permission tier, and streams the plan back. The user confirms in `spai` before any command runs. `spaid` then executes confirmed commands and streams the output back. Two round-trips per interaction: one for query/plan, one for execute.
 
@@ -88,11 +88,11 @@ Phase C (sequential): S6 ──▶ S7 ──▶ S8 ──▶ S9
 - [ ] **Step 1: Initialise the Go module**
 
 ```bash
-cd /home/srajan/Development/spaiOS
-go mod init spaios
+cd /home/srajan/Development/spaiSH
+go mod init spaish
 ```
 
-Expected: `go.mod` created with `module spaios` and `go 1.22`
+Expected: `go.mod` created with `module spaish` and `go 1.22`
 
 - [ ] **Step 2: Add the TOML dependency**
 
@@ -155,7 +155,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"spaios/internal/config"
+	"spaish/internal/config"
 )
 
 func TestLoadDefaults(t *testing.T) {
@@ -284,8 +284,8 @@ func (c *Config) APIKey() string {
 Create `config/spaid.toml`:
 
 ```toml
-# spaiOS daemon configuration
-# Copy this file to ~/.config/spaios/spaid.toml
+# spaiSH daemon configuration
+# Copy this file to ~/.config/spaish/spaid.toml
 
 [provider]
 # Any OpenAI-compatible API endpoint
@@ -409,7 +409,7 @@ package permissions_test
 import (
 	"testing"
 
-	"spaios/internal/permissions"
+	"spaish/internal/permissions"
 )
 
 func TestClassify(t *testing.T) {
@@ -678,7 +678,7 @@ import (
 	"strings"
 	"testing"
 
-	"spaios/internal/ai"
+	"spaish/internal/ai"
 )
 
 func TestCloudProviderComplete(t *testing.T) {
@@ -911,7 +911,7 @@ import (
 	"strings"
 	"testing"
 
-	"spaios/internal/ai"
+	"spaish/internal/ai"
 )
 
 func TestLocalProviderComplete(t *testing.T) {
@@ -1116,8 +1116,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"spaios/internal/ai"
-	"spaios/internal/session"
+	"spaish/internal/ai"
+	"spaish/internal/session"
 )
 
 func TestSessionLoadEmpty(t *testing.T) {
@@ -1219,7 +1219,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"spaios/internal/ai"
+	"spaish/internal/ai"
 )
 
 const maxMessages = 20
@@ -1233,10 +1233,10 @@ type Session struct {
 // DefaultPath returns the default session file path.
 func DefaultPath() string {
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "session.json")
+		return filepath.Join(d, "spaish", "session.json")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "spaios", "session.json")
+	return filepath.Join(home, ".local", "share", "spaish", "session.json")
 }
 
 // LoadFrom loads a session from the given file path.
@@ -1328,11 +1328,11 @@ import (
 	"strings"
 	"testing"
 
-	"spaios/internal/ai"
-	"spaios/internal/config"
-	"spaios/internal/protocol"
-	"spaios/internal/router"
-	"spaios/internal/session"
+	"spaish/internal/ai"
+	"spaish/internal/config"
+	"spaish/internal/protocol"
+	"spaish/internal/router"
+	"spaish/internal/session"
 	"os"
 	"path/filepath"
 )
@@ -1483,11 +1483,11 @@ import (
 	"regexp"
 	"strings"
 
-	"spaios/internal/ai"
-	"spaios/internal/config"
-	"spaios/internal/permissions"
-	"spaios/internal/protocol"
-	"spaios/internal/session"
+	"spaish/internal/ai"
+	"spaish/internal/config"
+	"spaish/internal/permissions"
+	"spaish/internal/protocol"
+	"spaish/internal/session"
 )
 
 var bashBlockRe = regexp.MustCompile("(?s)` + "`" + `` + "`" + `` + "`" + `(?:bash|sh|shell)?\n(.*?)` + "`" + `` + "`" + `` + "`" + `")
@@ -1648,7 +1648,7 @@ import (
 	"strings"
 	"testing"
 
-	"spaios/internal/executor"
+	"spaish/internal/executor"
 )
 
 func TestExecuteSimpleCommand(t *testing.T) {
@@ -1751,7 +1751,7 @@ import (
 	"net"
 	"os"
 
-	"spaios/internal/protocol"
+	"spaish/internal/protocol"
 )
 
 // QueryHandler processes a query request and writes Response chunks to enc.
@@ -1817,7 +1817,7 @@ import (
 	"os/exec"
 	"time"
 
-	"spaios/internal/protocol"
+	"spaish/internal/protocol"
 )
 
 // Client connects to the spaid Unix socket.
@@ -1924,29 +1924,29 @@ import (
 	"strings"
 	"syscall"
 
-	"spaios/internal/ai"
-	"spaios/internal/config"
-	"spaios/internal/executor"
-	"spaios/internal/protocol"
-	"spaios/internal/router"
-	"spaios/internal/session"
-	"spaios/internal/socket"
+	"spaish/internal/ai"
+	"spaish/internal/config"
+	"spaish/internal/executor"
+	"spaish/internal/protocol"
+	"spaish/internal/router"
+	"spaish/internal/session"
+	"spaish/internal/socket"
 )
 
 func configPath() string {
 	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "spaid.toml")
+		return filepath.Join(d, "spaish", "spaid.toml")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "spaios", "spaid.toml")
+	return filepath.Join(home, ".config", "spaish", "spaid.toml")
 }
 
 func sockPath() string {
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "spaid.sock")
+		return filepath.Join(d, "spaish", "spaid.sock")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "spaios", "spaid.sock")
+	return filepath.Join(home, ".local", "share", "spaish", "spaid.sock")
 }
 
 func main() {
@@ -2044,29 +2044,29 @@ import (
 	"strings"
 	"syscall"
 
-	"spaios/internal/ai"
-	"spaios/internal/config"
-	"spaios/internal/executor"
-	"spaios/internal/protocol"
-	"spaios/internal/router"
-	"spaios/internal/session"
-	"spaios/internal/socket"
+	"spaish/internal/ai"
+	"spaish/internal/config"
+	"spaish/internal/executor"
+	"spaish/internal/protocol"
+	"spaish/internal/router"
+	"spaish/internal/session"
+	"spaish/internal/socket"
 )
 
 func configPath() string {
 	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "spaid.toml")
+		return filepath.Join(d, "spaish", "spaid.toml")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "spaios", "spaid.toml")
+	return filepath.Join(home, ".config", "spaish", "spaid.toml")
 }
 
 func sockPath() string {
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "spaid.sock")
+		return filepath.Join(d, "spaish", "spaid.sock")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "spaios", "spaid.sock")
+	return filepath.Join(home, ".local", "share", "spaish", "spaid.sock")
 }
 
 func main() {
@@ -2187,26 +2187,26 @@ import (
 	"path/filepath"
 	"strings"
 
-	"spaios/internal/permissions"
-	"spaios/internal/protocol"
-	"spaios/internal/socket"
+	"spaish/internal/permissions"
+	"spaish/internal/protocol"
+	"spaish/internal/socket"
 )
 
 const disclaimer = `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  spaiOS — experimental personal project
+  spaiSH — experimental personal project
   Not affiliated with any AI provider or Linux distribution.
   You are responsible for your API key usage and costs.
   Run 'spai --legal' for full disclaimer and license.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `
 
-const legalText = `spaiOS is an experimental personal project provided AS IS with no warranties.
+const legalText = `spaiSH is an experimental personal project provided AS IS with no warranties.
 
 You are responsible for all actions taken on your system. Every command is
 shown to you before execution and requires your confirmation.
 
-You must supply your own API key for any cloud AI provider. spaiOS does not
+You must supply your own API key for any cloud AI provider. spaiSH does not
 provide API access and is not affiliated with any AI provider or Linux distribution.
 
 Full license: Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0
@@ -2214,10 +2214,10 @@ Full license: Apache 2.0 — https://www.apache.org/licenses/LICENSE-2.0
 
 func dataDir() string {
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
-		return filepath.Join(d, "spaios")
+		return filepath.Join(d, "spaish")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "spaios")
+	return filepath.Join(home, ".local", "share", "spaish")
 }
 
 func sockPath() string  { return filepath.Join(dataDir(), "spaid.sock") }
@@ -2432,7 +2432,7 @@ git commit -m "feat: add spai CLI client"
 
 ```ini
 [Unit]
-Description=spaiOS daemon
+Description=spaiSH daemon
 After=network.target
 
 [Service]
@@ -2454,11 +2454,11 @@ WantedBy=default.target
 set -euo pipefail
 
 INSTALL_DIR="$HOME/.local/bin"
-CONFIG_DIR="$HOME/.config/spaios"
+CONFIG_DIR="$HOME/.config/spaish"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Building spaiOS..."
+echo "Building spaiSH..."
 cd "$REPO_DIR"
 go build -o "$INSTALL_DIR/spai" ./cmd/spai/
 go build -o "$INSTALL_DIR/spaid" ./cmd/spaid/
@@ -2483,7 +2483,7 @@ echo ""
 echo "Installation complete."
 echo ""
 echo "Next steps:"
-echo "  1. Edit ~/.config/spaios/spaid.toml — set your API endpoint and model."
+echo "  1. Edit ~/.config/spaish/spaid.toml — set your API endpoint and model."
 echo "  2. Set your API key:  export SPAI_API_KEY='your-key'  (add to ~/.bashrc)"
 echo "  3. Run: spai 'is my system healthy?'"
 echo ""
@@ -2505,18 +2505,18 @@ echo "Removing files..."
 rm -f "$HOME/.local/bin/spai"
 rm -f "$HOME/.local/bin/spaid"
 rm -f "$HOME/.config/systemd/user/spaid.service"
-rm -f "$HOME/.local/share/spaios/spaid.sock"
+rm -f "$HOME/.local/share/spaish/spaid.sock"
 
 systemctl --user daemon-reload
 
 echo ""
-echo "spaiOS uninstalled."
+echo "spaiSH uninstalled."
 echo ""
 echo "The following were NOT removed (your data):"
-echo "  ~/.config/spaios/spaid.toml  — your config"
-echo "  ~/.local/share/spaios/       — session history"
+echo "  ~/.config/spaish/spaid.toml  — your config"
+echo "  ~/.local/share/spaish/       — session history"
 echo ""
-echo "To remove those too: rm -rf ~/.config/spaios ~/.local/share/spaios"
+echo "To remove those too: rm -rf ~/.config/spaish ~/.local/share/spaish"
 ```
 
 - [ ] **Step 4: Make scripts executable**

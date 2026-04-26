@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"spaios/internal/protocol"
+	"spaish/internal/protocol"
 )
 
 func TestRequestSessionFields(t *testing.T) {

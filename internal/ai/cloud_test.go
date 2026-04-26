@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"spaios/internal/ai"
+	"spaish/internal/ai"
 )
 
 func TestCloudProviderComplete(t *testing.T) {

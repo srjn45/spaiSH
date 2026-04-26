@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"spaios/internal/agent"
-	"spaios/internal/ai"
-	"spaios/internal/protocol"
-	"spaios/internal/session"
+	"spaish/internal/agent"
+	"spaish/internal/ai"
+	"spaish/internal/protocol"
+	"spaish/internal/session"
 )
 
 // mockProvider returns a fixed sequence of text responses.

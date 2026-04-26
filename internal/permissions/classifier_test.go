@@ -3,7 +3,7 @@ package permissions_test
 import (
 	"testing"
 
-	"spaios/internal/permissions"
+	"spaish/internal/permissions"
 )
 
 func TestClassify(t *testing.T) {

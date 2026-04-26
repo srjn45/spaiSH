@@ -23,7 +23,7 @@ The foundational layer. Establishes `spaid` as a working daemon and `spai` as a 
 
 ### Success Criteria
 
-A developer can install spaiOS on a fresh Linux machine and use `spai` to diagnose and fix a real system problem within 5 minutes, with no commands executing without their confirmation.
+A developer can install spaiSH on a fresh Linux machine and use `spai` to diagnose and fix a real system problem within 5 minutes, with no commands executing without their confirmation.
 
 ---
 
@@ -70,7 +70,7 @@ Completes the AI-native OS story.
 - [ ] GUI terminal with AI reasoning display
 - [ ] Intent manifest specification — apps as declarative intent files
 - [ ] Multi-provider abstraction — unified API across model providers
-- [ ] Bootable ISO (Linux base + spaiOS pre-installed)
+- [ ] Bootable ISO (Linux base + spaiSH pre-installed)
 
 ---
 

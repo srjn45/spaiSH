@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"spaios/internal/permissions"
-	"spaios/internal/protocol"
+	"spaish/internal/permissions"
+	"spaish/internal/protocol"
 )
 
 // recommendedModels is the curated list shown to new users by `spai llm list`.
@@ -335,8 +335,8 @@ func (m *Manager) handlePull(ch chan<- protocol.Response, args []string) {
 	var cmd, msg string
 	switch activeRuntime {
 	case "bitnet":
-		dir := "~/.local/share/spaios/bitnet"
-		venv := "~/.local/share/spaios/bitnet-venv"
+		dir := "~/.local/share/spaish/bitnet"
+		venv := "~/.local/share/spaish/bitnet-venv"
 		cmd = fmt.Sprintf("cd %s && %s/bin/python setup_env.py -md models/%s -q i2_s", dir, venv, model)
 		msg = fmt.Sprintf("Downloading and quantizing BitNet model %q...\n", model)
 	default:
@@ -373,7 +373,7 @@ func (m *Manager) handleRemove(ch chan<- protocol.Response, args []string) {
 	var cmd string
 	switch activeRuntime {
 	case "bitnet":
-		cmd = fmt.Sprintf("rm -rf ~/.local/share/spaios/bitnet/models/%s", model)
+		cmd = fmt.Sprintf("rm -rf ~/.local/share/spaish/bitnet/models/%s", model)
 	default:
 		cmd = fmt.Sprintf("ollama rm %s", model)
 	}

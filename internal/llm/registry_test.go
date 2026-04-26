@@ -3,7 +3,7 @@ package llm_test
 import (
 	"testing"
 
-	"spaios/internal/llm"
+	"spaish/internal/llm"
 )
 
 func TestRegistryGetOllama(t *testing.T) {

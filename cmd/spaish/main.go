@@ -13,11 +13,11 @@ import (
 
 	"golang.org/x/term"
 
-	"spaios/internal/config"
-	"spaios/internal/protocol"
-	"spaios/internal/session"
-	"spaios/internal/socket"
-	"spaios/internal/spaish"
+	"spaish/internal/config"
+	"spaish/internal/protocol"
+	"spaish/internal/session"
+	"spaish/internal/socket"
+	"spaish/internal/spaish"
 )
 
 // rawMode guards concurrent terminal mode transitions.
@@ -49,18 +49,18 @@ func (r *rawMode) reenter() {
 
 func sockPath() string {
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "spaid.sock")
+		return filepath.Join(d, "spaish", "spaid.sock")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "spaios", "spaid.sock")
+	return filepath.Join(home, ".local", "share", "spaish", "spaid.sock")
 }
 
 func configPath() string {
 	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "spaid.toml")
+		return filepath.Join(d, "spaish", "spaid.toml")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "spaios", "spaid.toml")
+	return filepath.Join(home, ".config", "spaish", "spaid.toml")
 }
 
 // convRequest carries a conversation trigger from the event goroutine to inputLoop.

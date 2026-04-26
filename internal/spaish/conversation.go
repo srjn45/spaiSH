@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"spaios/internal/protocol"
-	"spaios/internal/socket"
+	"spaish/internal/protocol"
+	"spaish/internal/socket"
 )
 
 // dissatisfactionPhrases trigger a full-history rethink when found in user replies.
@@ -30,7 +30,7 @@ type Conversation struct {
 }
 
 // NewConversation creates a Conversation backed by the given socket client.
-// sessDir is the session directory (e.g. ~/.local/share/spaios/sessions/spaish_<pid>).
+// sessDir is the session directory (e.g. ~/.local/share/spaish/sessions/spaish_<pid>).
 func NewConversation(client *socket.Client, sessionID, sessDir string) *Conversation {
 	return &Conversation{
 		client:    client,

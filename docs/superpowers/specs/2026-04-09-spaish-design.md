@@ -9,7 +9,7 @@
 
 spaiSH is a PTY-based shell wrapper that gives users a full AI-native terminal experience. It wraps the user's existing shell (`$SHELL`) transparently — all existing config, aliases, and history work unchanged. AI assistance is silent by default, activates automatically on errors, and is always available via a `?` prefix or natural language input.
 
-spaiSH is a third binary alongside `spai` and `spaid`. It is an extension of spaiOS, not a replacement — users who want explicit one-off AI commands use `spai`; users who want a full AI shell experience use `spaiSH`. Both use `spaid` as their backend.
+spaiSH is a third binary alongside `spai` and `spaid`. It is an extension of spaiSH, not a replacement — users who want explicit one-off AI commands use `spai`; users who want a full AI shell experience use `spaiSH`. Both use `spaid` as their backend.
 
 ---
 
@@ -146,7 +146,7 @@ If the user's reply contains any of: `wrong`, `no`, `doesn't work`, `not right`,
 ## Session Management
 
 ### Storage
-spaiSH uses the existing session infrastructure (`internal/session`). Session ID is `spaish_<pid>`. Each spaiSH instance gets its own isolated session file in `~/.local/share/spaios/sessions/`.
+spaiSH uses the existing session infrastructure (`internal/session`). Session ID is `spaish_<pid>`. Each spaiSH instance gets its own isolated session file in `~/.local/share/spaish/sessions/`.
 
 ### What is stored per exchange
 ```

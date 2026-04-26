@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"spaios/internal/ai"
+	"spaish/internal/ai"
 )
 
 const maxMessages = 20
@@ -23,10 +23,10 @@ type Session struct {
 // SessionsDir returns the directory where per-session subdirectories are stored.
 func SessionsDir() string {
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "sessions")
+		return filepath.Join(d, "spaish", "sessions")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "spaios", "sessions")
+	return filepath.Join(home, ".local", "share", "spaish", "sessions")
 }
 
 // cachePath returns the path to this session's cache.json.

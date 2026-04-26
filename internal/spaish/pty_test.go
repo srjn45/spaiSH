@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"spaios/internal/spaish"
+	"spaish/internal/spaish"
 )
 
 func TestParseMarker(t *testing.T) {

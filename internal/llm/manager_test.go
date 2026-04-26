@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"spaios/internal/llm"
-	"spaios/internal/protocol"
+	"spaish/internal/llm"
+	"spaish/internal/protocol"
 )
 
 // newTestState returns an in-memory state pointing to a temp file.

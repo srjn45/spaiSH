@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"spaios/internal/ai"
-	"spaios/internal/config"
-	"spaios/internal/protocol"
-	"spaios/internal/router"
-	"spaios/internal/session"
+	"spaish/internal/ai"
+	"spaish/internal/config"
+	"spaish/internal/protocol"
+	"spaish/internal/router"
+	"spaish/internal/session"
 )
 
 // stubProvider is a fake AI provider for testing.

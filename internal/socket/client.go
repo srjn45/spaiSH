@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"time"
 
-	"spaios/internal/protocol"
+	"spaish/internal/protocol"
 )
 
 // Client connects to the spaid Unix socket.

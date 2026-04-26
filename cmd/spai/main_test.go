@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"spaios/internal/session"
+	"spaish/internal/session"
 )
 
 func TestResolveSessionIDFlagWins(t *testing.T) {

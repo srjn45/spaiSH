@@ -2,7 +2,7 @@
 
 ## Overview
 
-spaiOS consists of two binaries and a configuration file:
+spaiSH consists of two binaries and a configuration file:
 
 | Component | Purpose |
 |-----------|---------|
@@ -15,10 +15,10 @@ spaiOS consists of two binaries and a configuration file:
 ## System Layout
 
 ```
-~/.config/spaios/
+~/.config/spaish/
 └── spaid.toml              # User configuration
 
-~/.local/share/spaios/
+~/.local/share/spaish/
 ├── spaid.sock              # Unix socket (spaid listens here)
 ├── spaid.log               # Daemon logs
 └── session.json            # Rolling session context
@@ -32,7 +32,7 @@ spaiOS consists of two binaries and a configuration file:
 
 ## The Daemon — `spaid`
 
-`spaid` runs as a systemd user service. It starts on login and runs silently in the background. It is the single brain behind all spaiOS functionality.
+`spaid` runs as a systemd user service. It starts on login and runs silently in the background. It is the single brain behind all spaiSH functionality.
 
 ```
                    ┌──────────────────┐
@@ -90,7 +90,7 @@ Error: "No AI provider available."
 
 ## Configuration
 
-`~/.config/spaios/spaid.toml`:
+`~/.config/spaish/spaid.toml`:
 
 ```toml
 [provider]
@@ -157,7 +157,7 @@ Any program that can read a file gets AI capabilities.
 ## Source Layout
 
 ```
-spaios/
+spaish/
 ├── cmd/
 │   ├── spai/               # CLI client
 │   └── spaid/              # Daemon

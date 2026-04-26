@@ -1,5 +1,5 @@
 [Unit]
-Description=spaiOS daemon
+Description=spaiSH daemon
 After=network.target
 
 [Service]

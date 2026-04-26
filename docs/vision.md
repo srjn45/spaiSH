@@ -8,7 +8,7 @@ This made sense when computers were expensive and humans were the cheap part. Th
 
 ## The Idea
 
-spaiOS inverts the model: the machine interprets **intent**, and translates it into system operations. The underlying tools — bash, systemctl, nginx, docker — still exist and still run. The cognitive layer on top of them is replaced.
+spaiSH inverts the model: the machine interprets **intent**, and translates it into system operations. The underlying tools — bash, systemctl, nginx, docker — still exist and still run. The cognitive layer on top of them is replaced.
 
 This is not a chatbot wrapper around your terminal. It is a rethinking of what the interface between a human and an operating system should look like in 2026.
 
@@ -16,7 +16,7 @@ This is not a chatbot wrapper around your terminal. It is a rethinking of what t
 
 Java introduced "write once, run anywhere" via the JVM — an abstraction layer that made the underlying OS irrelevant to the developer.
 
-spaiOS proposes the same for AI-powered system interaction:
+spaiSH proposes the same for AI-powered system interaction:
 
 - The `spaid` daemon is the runtime — a persistent, context-aware process that understands your system state
 - Any AI model (cloud or local) can back it — swapping providers is a config change
@@ -46,7 +46,7 @@ The AI reads the manifest, determines how to execute it in the current environme
 
 **Local-first.** The free tier runs entirely on your device. Nothing leaves it unless you configure a cloud provider. Safety decisions (permission classification) always run locally.
 
-**Model-agnostic.** spaiOS has no opinion about which AI model you use. Cloud, local, self-hosted — configure an endpoint and a model name. That's it.
+**Model-agnostic.** spaiSH has no opinion about which AI model you use. Cloud, local, self-hosted — configure an endpoint and a model name. That's it.
 
 **Safe by default.** Every action is classified before execution. Destructive operations require explicit confirmation. The AI shows its work before doing it.
 
@@ -58,4 +58,4 @@ Once `spaid` is a stable daemon with a well-defined socket API, any process on t
 
 The long-term vision — apps shipped as intent manifests that any AI runtime can execute — becomes achievable once the runtime layer is proven and trusted.
 
-spaiOS is the proof of concept for a new computing paradigm. It starts with one command: `spai`.
+spaiSH is the proof of concept for a new computing paradigm. It starts with one command: `spai`.

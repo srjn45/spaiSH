@@ -1,6 +1,6 @@
 # Contributing
 
-spaiOS is an experimental personal project. Contributions are welcome but reviewed carefully — this software executes commands on users' systems, so correctness and safety take priority over features.
+spaiSH is an experimental personal project. Contributions are welcome but reviewed carefully — this software executes commands on users' systems, so correctness and safety take priority over features.
 
 ---
 
@@ -23,8 +23,8 @@ spaiOS is an experimental personal project. Contributions are welcome but review
 ### Build
 
 ```bash
-git clone https://github.com/srajanpathak/spaios
-cd spaios
+git clone https://github.com/srajanpathak/spaish
+cd spaish
 go build ./cmd/spai ./cmd/spaid
 ```
 
@@ -52,7 +52,7 @@ go test ./...
 
 **Safety first.** The permission tier engine must never be weakened. If you're touching `internal/permissions/`, every change needs tests proving the classification behaviour.
 
-**No telemetry.** Do not add any analytics, crash reporting, or usage tracking. spaiOS does not phone home.
+**No telemetry.** Do not add any analytics, crash reporting, or usage tracking. spaiSH does not phone home.
 
 **Keep the daemon lean.** `spaid` is a system daemon. Dependencies should be minimal. Every new dependency needs a clear justification.
 

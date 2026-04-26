@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"spaios/internal/ai"
-	"spaios/internal/session"
+	"spaish/internal/ai"
+	"spaish/internal/session"
 )
 
 func TestAppendHistoryCreatesFile(t *testing.T) {
@@ -19,7 +19,7 @@ func TestAppendHistoryCreatesFile(t *testing.T) {
 	ts := time.Date(2026, 4, 5, 14, 32, 0, 0, time.UTC)
 	s.AppendHistory(ts, "why is nginx down", "Port conflict on :80.", "")
 
-	histPath := filepath.Join(dir, "spaios", "sessions", "hist", "history.md")
+	histPath := filepath.Join(dir, "spaish", "sessions", "hist", "history.md")
 	data, err := os.ReadFile(histPath)
 	if err != nil {
 		t.Fatalf("history.md not created: %v", err)
@@ -49,7 +49,7 @@ func TestAppendHistoryOutputSectionOnlyWhenNonEmpty(t *testing.T) {
 
 	// No output
 	s.AppendHistory(ts, "q", "a", "")
-	histPath := filepath.Join(dir, "spaios", "sessions", "histout", "history.md")
+	histPath := filepath.Join(dir, "spaish", "sessions", "histout", "history.md")
 	data, _ := os.ReadFile(histPath)
 	if strings.Contains(string(data), "— output") {
 		t.Error("output section should not appear when output is empty")
@@ -75,7 +75,7 @@ func TestAppendHistoryAccumulates(t *testing.T) {
 	s.AppendHistory(ts, "first query", "first answer", "")
 	s.AppendHistory(ts, "second query", "second answer", "")
 
-	histPath := filepath.Join(dir, "spaios", "sessions", "accum", "history.md")
+	histPath := filepath.Join(dir, "spaish", "sessions", "accum", "history.md")
 	data, _ := os.ReadFile(histPath)
 	content := string(data)
 	if !strings.Contains(content, "first query") || !strings.Contains(content, "second query") {
@@ -88,7 +88,7 @@ func TestAppendHistoryRotatesAt1MB(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", dir)
 
 	s, _ := session.LoadByID("rotate")
-	sessDir := filepath.Join(dir, "spaios", "sessions", "rotate")
+	sessDir := filepath.Join(dir, "spaish", "sessions", "rotate")
 	os.MkdirAll(sessDir, 0755)
 
 	// Pre-fill history.md just above 1 MB
@@ -120,7 +120,7 @@ func TestAppendHistoryRotationIncrementsIndex(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", dir)
 
 	s, _ := session.LoadByID("rotidx")
-	sessDir := filepath.Join(dir, "spaios", "sessions", "rotidx")
+	sessDir := filepath.Join(dir, "spaish", "sessions", "rotidx")
 	os.MkdirAll(sessDir, 0755)
 
 	// Simulate history.001.md already exists
@@ -155,7 +155,7 @@ func TestReadAllHistoryOrdering(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
 
-	sessDir := filepath.Join(dir, "spaios", "sessions", "ordering")
+	sessDir := filepath.Join(dir, "spaish", "sessions", "ordering")
 	os.MkdirAll(sessDir, 0755)
 	os.WriteFile(filepath.Join(sessDir, "history.001.md"), []byte("first\n"), 0600)
 	os.WriteFile(filepath.Join(sessDir, "history.002.md"), []byte("second\n"), 0600)

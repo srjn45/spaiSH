@@ -12,31 +12,31 @@ import (
 	"syscall"
 	"time"
 
-	"spaios/internal/agent"
-	"spaios/internal/ai"
-	"spaios/internal/config"
-	"spaios/internal/executor"
-	"spaios/internal/llm"
-	"spaios/internal/protocol"
-	"spaios/internal/router"
-	"spaios/internal/session"
-	"spaios/internal/socket"
+	"spaish/internal/agent"
+	"spaish/internal/ai"
+	"spaish/internal/config"
+	"spaish/internal/executor"
+	"spaish/internal/llm"
+	"spaish/internal/protocol"
+	"spaish/internal/router"
+	"spaish/internal/session"
+	"spaish/internal/socket"
 )
 
 func configPath() string {
 	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "spaid.toml")
+		return filepath.Join(d, "spaish", "spaid.toml")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "spaios", "spaid.toml")
+	return filepath.Join(home, ".config", "spaish", "spaid.toml")
 }
 
 func sockPath() string {
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
-		return filepath.Join(d, "spaios", "spaid.sock")
+		return filepath.Join(d, "spaish", "spaid.sock")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "spaios", "spaid.sock")
+	return filepath.Join(home, ".local", "share", "spaish", "spaid.sock")
 }
 
 // loadSession returns the session for the given ID, falling back to "default".

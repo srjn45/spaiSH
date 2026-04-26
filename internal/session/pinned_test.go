@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"spaios/internal/session"
+	"spaish/internal/session"
 )
 
 func TestPinnedPathUsesXDG(t *testing.T) {
@@ -13,7 +13,7 @@ func TestPinnedPathUsesXDG(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", dir)
 
 	p := session.PinnedPath()
-	expected := filepath.Join(dir, "spaios", "pinned_session")
+	expected := filepath.Join(dir, "spaish", "pinned_session")
 	if p != expected {
 		t.Errorf("expected %q, got %q", expected, p)
 	}
@@ -71,7 +71,7 @@ func TestWritePinnedCreatesParentDir(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dir)
 
-	// spaios/ subdir does not exist yet
+	// spaish/ subdir does not exist yet
 	if err := session.WritePinned("work"); err != nil {
 		t.Fatalf("WritePinned() should create parent dirs: %v", err)
 	}
