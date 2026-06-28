@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -10,13 +10,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
 	"time"
 
+	"spaish/internal/app"
 	"spaish/internal/permissions"
 	"spaish/internal/protocol"
 	"spaish/internal/session"
-	"spaish/internal/socket"
 )
 
 const disclaimer = `
@@ -47,13 +46,7 @@ func dataDir() string {
 	return filepath.Join(home, ".local", "share", "spaish")
 }
 
-func sockPath() string  { return filepath.Join(dataDir(), "spaid.sock") }
 func stampPath() string { return filepath.Join(dataDir(), ".first_run_done") }
-
-func daemonBin() string {
-	self, _ := os.Executable()
-	return filepath.Join(filepath.Dir(self), "spaid")
-}
 
 func showDisclaimer() {
 	if _, err := os.Stat(stampPath()); err == nil {
@@ -107,6 +100,16 @@ func readStdin() string {
 	return string(data)
 }
 
+// printStream is the default streaming handler: text/output to stdout, errors to stderr.
+func printStream(resp protocol.Response) {
+	switch resp.Type {
+	case "text", "output":
+		fmt.Print(resp.Content)
+	case "error":
+		fmt.Fprintf(os.Stderr, "\nerror: %s\n", resp.Content)
+	}
+}
+
 // handleLLMCommand handles `spai llm <cmd> [args...]`.
 func handleLLMCommand(args []string) {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
@@ -129,24 +132,11 @@ func handleLLMCommand(args []string) {
 
 	showDisclaimer()
 
-	if err := socket.EnsureRunning(sockPath(), daemonBin()); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
-	req := &protocol.Request{
-		Type: "llm",
-		LLM: &protocol.LLMRequest{
-			Command: args[0],
-			Args:    args[1:],
-		},
-	}
-
-	client := socket.NewClient(sockPath())
+	a := app.New()
 	fmt.Println()
 
 	var plan []protocol.CommandItem
-	err := client.Send(req, func(resp protocol.Response) error {
+	a.RunLLM(&protocol.LLMRequest{Command: args[0], Args: args[1:]}, func(resp protocol.Response) {
 		switch resp.Type {
 		case "text":
 			fmt.Print(resp.Content)
@@ -155,13 +145,7 @@ func handleLLMCommand(args []string) {
 		case "error":
 			fmt.Fprintf(os.Stderr, "\nerror: %s\n", resp.Content)
 		}
-		return nil
 	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
 	fmt.Println()
 
 	if len(plan) == 0 {
@@ -179,86 +163,28 @@ func handleLLMCommand(args []string) {
 	}
 
 	fmt.Println()
-	runConfirmed(plan, client)
+	runConfirmed(plan)
 }
 
-// handleClearCommand handles `spai clear [--lines N] [--session <id>]`.
-func handleClearCommand(args []string) {
-	fs := flag.NewFlagSet("clear", flag.ExitOnError)
-	lines := fs.Int("lines", 0, "keep only the last N messages (default: clear all)")
+// handleSessionMaintenance handles clear / compact / rebuild-context, which all
+// stream text back through the app's session handler.
+func handleSessionMaintenance(cmdName string, args []string) {
+	fs := flag.NewFlagSet(cmdName, flag.ExitOnError)
+	var lines int
+	if cmdName == "clear" {
+		fs.IntVar(&lines, "lines", 0, "keep only the last N messages (default: clear all)")
+	}
 	sessionFlag := fs.String("session", "", "named session (default: $SPAI_SESSION_ID or 'default')")
 	fs.Parse(args)
 
 	showDisclaimer()
 
-	if err := socket.EnsureRunning(sockPath(), daemonBin()); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
-	req := &protocol.Request{
-		Type:      "session",
+	a := app.New()
+	fmt.Println()
+	a.RunSession(context.Background(), &protocol.Request{
 		SessionID: resolveSessionID(*sessionFlag),
-		Session: &protocol.SessionRequest{
-			Command: "clear",
-			Lines:   *lines,
-		},
-	}
-
-	client := socket.NewClient(sockPath())
-	fmt.Println()
-
-	if err := client.Send(req, func(resp protocol.Response) error {
-		switch resp.Type {
-		case "text":
-			fmt.Print(resp.Content)
-		case "error":
-			fmt.Fprintf(os.Stderr, "error: %s\n", resp.Content)
-		}
-		return nil
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println()
-}
-
-// handleCompactCommand handles `spai compact [--session <id>]`.
-func handleCompactCommand(args []string) {
-	fs := flag.NewFlagSet("compact", flag.ExitOnError)
-	sessionFlag := fs.String("session", "", "named session (default: $SPAI_SESSION_ID or 'default')")
-	fs.Parse(args)
-
-	showDisclaimer()
-
-	if err := socket.EnsureRunning(sockPath(), daemonBin()); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
-	req := &protocol.Request{
-		Type:      "session",
-		SessionID: resolveSessionID(*sessionFlag),
-		Session: &protocol.SessionRequest{
-			Command: "compact",
-		},
-	}
-
-	client := socket.NewClient(sockPath())
-	fmt.Println()
-
-	if err := client.Send(req, func(resp protocol.Response) error {
-		switch resp.Type {
-		case "text":
-			fmt.Print(resp.Content)
-		case "error":
-			fmt.Fprintf(os.Stderr, "error: %s\n", resp.Content)
-		}
-		return nil
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
+		Session:   &protocol.SessionRequest{Command: cmdName, Lines: lines},
+	}, printStream)
 	fmt.Println()
 }
 
@@ -296,7 +222,6 @@ func handleHistoryCommand(args []string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		// Fallback: print directly if pager fails
 		fmt.Print(content)
 	}
 }
@@ -386,7 +311,6 @@ func handleSessionsCommand(args []string) {
 		return
 	}
 
-	// spai sessions <id> — pin this session
 	id := args[0]
 	sessDir := filepath.Join(session.SessionsDir(), id)
 	if err := os.MkdirAll(sessDir, 0755); err != nil {
@@ -400,45 +324,6 @@ func handleSessionsCommand(args []string) {
 	fmt.Printf("Switched to session '%s'. Future queries will use this context.\n", id)
 }
 
-// handleRebuildContextCommand handles `spai rebuild-context [--session <id>]`.
-func handleRebuildContextCommand(args []string) {
-	fs := flag.NewFlagSet("rebuild-context", flag.ExitOnError)
-	sessionFlag := fs.String("session", "", "named session (default: resolved session ID)")
-	fs.Parse(args)
-
-	showDisclaimer()
-
-	if err := socket.EnsureRunning(sockPath(), daemonBin()); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
-	req := &protocol.Request{
-		Type:      "session",
-		SessionID: resolveSessionID(*sessionFlag),
-		Session: &protocol.SessionRequest{
-			Command: "rebuild-context",
-		},
-	}
-
-	client := socket.NewClient(sockPath())
-	fmt.Println()
-
-	if err := client.Send(req, func(resp protocol.Response) error {
-		switch resp.Type {
-		case "text":
-			fmt.Print(resp.Content)
-		case "error":
-			fmt.Fprintf(os.Stderr, "error: %s\n", resp.Content)
-		}
-		return nil
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println()
-}
-
 func main() {
 	// Handle subcommands before flag parsing so flags don't interfere.
 	if len(os.Args) >= 2 {
@@ -446,20 +331,14 @@ func main() {
 		case "llm":
 			handleLLMCommand(os.Args[2:])
 			return
-		case "clear":
-			handleClearCommand(os.Args[2:])
-			return
-		case "compact":
-			handleCompactCommand(os.Args[2:])
+		case "clear", "compact", "rebuild-context":
+			handleSessionMaintenance(os.Args[1], os.Args[2:])
 			return
 		case "history":
 			handleHistoryCommand(os.Args[2:])
 			return
 		case "sessions":
 			handleSessionsCommand(os.Args[2:])
-			return
-		case "rebuild-context":
-			handleRebuildContextCommand(os.Args[2:])
 			return
 		}
 	}
@@ -503,11 +382,6 @@ func main() {
 
 	showDisclaimer()
 
-	if err := socket.EnsureRunning(sockPath(), daemonBin()); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-
 	cwd, _ := os.Getwd()
 	req := &protocol.Request{
 		Type:       "agent",
@@ -524,75 +398,32 @@ func main() {
 		},
 	}
 
-	client := socket.NewClient(sockPath())
-	fmt.Println()
+	confirmFn := func(creq protocol.ConfirmRequest) bool {
+		fmt.Printf("\n[%s] %s\n", creq.Display, creq.Command)
+		return confirmSingle(creq)
+	}
 
-	err := client.SendInteractive(req, func(resp protocol.Response, enc *json.Encoder) error {
-		switch resp.Type {
-		case "text":
-			fmt.Print(resp.Content)
-		case "output":
-			fmt.Print(resp.Content)
-		case "error":
-			fmt.Fprintf(os.Stderr, "\nerror: %s\n", resp.Content)
-		case "confirm_request":
-			var confirmReq protocol.ConfirmRequest
-			if err := json.Unmarshal([]byte(resp.Content), &confirmReq); err != nil {
-				return err
-			}
-			fmt.Printf("\n[%s] %s\n", confirmReq.Display, confirmReq.Command)
-			approved := confirmSingle(confirmReq)
-			return enc.Encode(&protocol.Request{
-				Type:            "confirm_response",
-				ConfirmResponse: &protocol.ConfirmResponse{Approved: approved},
-			})
-		}
-		return nil
-	})
-	if err != nil {
+	a := app.New()
+	fmt.Println()
+	if err := a.RunAgent(context.Background(), req, confirmFn, printStream); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Println()
 }
 
-// runConfirmed executes confirmed commands after plan approval.
-func runConfirmed(plan []protocol.CommandItem, client *socket.Client) {
-	var socketCmds []string
+// runConfirmed executes confirmed commands locally after plan approval.
+func runConfirmed(plan []protocol.CommandItem) {
 	for _, item := range plan {
-		if item.Tier == permissions.TierElevated.String() || item.Tier == permissions.TierDestructive.String() {
-			fmt.Printf("$ %s\n", item.Command)
-			cmd := exec.Command("sh", "-c", item.Command)
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "error: command failed: %v\n", err)
-				return
-			}
-		} else {
-			socketCmds = append(socketCmds, item.Command)
+		fmt.Printf("$ %s\n", item.Command)
+		cmd := exec.Command("sh", "-c", item.Command)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "error: command failed: %v\n", err)
+			return
 		}
-	}
-
-	if len(socketCmds) == 0 {
-		return
-	}
-
-	execReq := &protocol.Request{
-		Type:     "execute",
-		Commands: socketCmds,
-	}
-	if err := client.Send(execReq, func(resp protocol.Response) error {
-		switch resp.Type {
-		case "output":
-			fmt.Print(resp.Content)
-		case "error":
-			fmt.Fprintf(os.Stderr, "error: %s\n", resp.Content)
-		}
-		return nil
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 	}
 }
 
