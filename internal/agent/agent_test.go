@@ -18,6 +18,12 @@ type mockProvider struct {
 }
 
 func (m *mockProvider) Available() bool { return true }
+func (m *mockProvider) Name() string    { return "mock" }
+func (m *mockProvider) Stream(_ context.Context, _ ai.Request) (<-chan ai.Event, error) {
+	ch := make(chan ai.Event)
+	close(ch)
+	return ch, nil
+}
 func (m *mockProvider) Complete(_ context.Context, _ []ai.Message) (<-chan string, error) {
 	ch := make(chan string, 1)
 	resp := ""

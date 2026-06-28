@@ -63,17 +63,33 @@ func New() *App {
 		localModel = llmState.ActiveModel
 	}
 
-	cloud := ai.NewCloudProvider(cfg.Provider.Endpoint, cfg.APIKey(), cfg.Provider.Model)
+	cloud := buildCloudProvider(cfg)
 	var local ai.Provider
 	switch llmState.ActiveRuntime {
 	case "bitnet":
 		rt, _ := llm.Get("bitnet")
-		local = ai.NewOpenAICompatProvider(rt.Endpoint, localModel)
+		local = ai.NewOpenAIProvider(rt.Endpoint+"/v1", "", localModel)
 	default: // "ollama" or unset
 		local = ai.NewLocalProvider(cfg.Local.OllamaEndpoint, localModel)
 	}
 
 	return &App{cfg: cfg, cloud: cloud, local: local, llmMgr: llmMgr}
+}
+
+// buildCloudProvider constructs the remote provider from config. It defaults to
+// the native Anthropic provider; set [provider].kind = "openai" for an
+// OpenAI-compatible endpoint.
+func buildCloudProvider(cfg *config.Config) ai.Provider {
+	switch cfg.Provider.Kind {
+	case "openai":
+		return ai.NewOpenAIProvider(cfg.Provider.Endpoint, cfg.APIKey(), cfg.Provider.Model)
+	default: // "anthropic" or unset
+		key := cfg.APIKey()
+		if key == "" {
+			key = os.Getenv("ANTHROPIC_API_KEY")
+		}
+		return ai.NewAnthropicProvider(key, cfg.Provider.Model)
+	}
 }
 
 func (a *App) providers() ai.ProviderSet {

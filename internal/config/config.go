@@ -17,6 +17,7 @@ type Config struct {
 }
 
 type ProviderConfig struct {
+	Kind      string `toml:"kind"` // "anthropic" (default) | "openai"
 	Endpoint  string `toml:"endpoint"`
 	APIKeyEnv string `toml:"api_key_env"`
 	Model     string `toml:"model"`

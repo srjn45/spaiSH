@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"spaish/internal/ai"
 	"spaish/internal/session"
 )
 
@@ -195,13 +194,13 @@ Run: sudo systemctl restart nginx
 	if len(msgs) != 4 {
 		t.Fatalf("expected 4 messages (2 user + 2 assistant), got %d", len(msgs))
 	}
-	if msgs[0] != (ai.Message{Role: "user", Content: "why is nginx down"}) {
+	if msgs[0].Role != "user" || msgs[0].Content != "why is nginx down" {
 		t.Errorf("unexpected msg[0]: %+v", msgs[0])
 	}
-	if msgs[1] != (ai.Message{Role: "assistant", Content: "Port conflict on :80."}) {
+	if msgs[1].Role != "assistant" || msgs[1].Content != "Port conflict on :80." {
 		t.Errorf("unexpected msg[1]: %+v", msgs[1])
 	}
-	if msgs[2] != (ai.Message{Role: "user", Content: "how do I fix it"}) {
+	if msgs[2].Role != "user" || msgs[2].Content != "how do I fix it" {
 		t.Errorf("unexpected msg[2]: %+v", msgs[2])
 	}
 }

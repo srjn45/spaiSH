@@ -164,7 +164,7 @@ func TestMessagesForPromptNoSummary(t *testing.T) {
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(msgs))
 	}
-	if msgs[0] != (ai.Message{Role: "user", Content: "hello"}) {
+	if msgs[0].Role != "user" || msgs[0].Content != "hello" {
 		t.Errorf("unexpected message: %+v", msgs[0])
 	}
 }
