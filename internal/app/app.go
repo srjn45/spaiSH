@@ -92,6 +92,24 @@ func buildCloudProvider(cfg *config.Config) ai.Provider {
 	}
 }
 
+// ProviderInfo returns a short description of the configured remote provider and
+// model, for display in the REPL.
+func (a *App) ProviderInfo() string {
+	model := a.cfg.Provider.Model
+	if model == "" && a.cfg.Provider.Kind != "openai" {
+		model = ai.DefaultAnthropicModel
+	}
+	name := a.cloud.Name()
+	avail := "not configured"
+	if a.cloud.Available() {
+		avail = "ready"
+	}
+	if model == "" {
+		return fmt.Sprintf("%s (%s)", name, avail)
+	}
+	return fmt.Sprintf("%s / %s (%s)", name, model, avail)
+}
+
 func (a *App) providers() ai.ProviderSet {
 	return ai.ProviderSet{
 		Cloud:       a.cloud,
@@ -128,12 +146,15 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 		return err
 	}
 
-	mode := agent.ModeManual
-	switch {
-	case req.DryRun:
-		mode = agent.ModePlan
-	case a.cfg.Agent.Autonomous || req.Agent.Autonomous:
-		mode = agent.ModeAuto
+	mode := req.Agent.Mode
+	if mode == "" {
+		mode = agent.ModeManual
+		switch {
+		case req.DryRun:
+			mode = agent.ModePlan
+		case a.cfg.Agent.Autonomous || req.Agent.Autonomous:
+			mode = agent.ModeAuto
+		}
 	}
 
 	agentCfg := agent.Config{

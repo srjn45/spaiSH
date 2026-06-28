@@ -45,6 +45,7 @@ type AgentRequest struct {
 	Query      string `json:"query"`
 	Verbose    bool   `json:"verbose"`
 	Autonomous bool   `json:"autonomous"`
+	Mode       string `json:"mode,omitempty"` // "manual" | "auto" | "plan"; overrides derived mode
 }
 
 // ConfirmRequest is streamed mid-loop from spaid → spai asking the user to

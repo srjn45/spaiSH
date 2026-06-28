@@ -370,8 +370,14 @@ func main() {
 
 	args := flag.Args()
 	if len(args) == 0 {
-		flag.Usage()
-		os.Exit(1)
+		// No query → interactive REPL session.
+		showDisclaimer()
+		cwd, _ := os.Getwd()
+		if err := cli.NewREPL(app.New(), resolveSessionID(*sessionFlag), cwd, gitBranch()).Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	query := strings.Join(args, " ")
