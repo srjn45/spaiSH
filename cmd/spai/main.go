@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"spaish/internal/app"
+	"spaish/internal/cli"
 	"spaish/internal/permissions"
 	"spaish/internal/protocol"
 	"spaish/internal/session"
@@ -398,14 +399,9 @@ func main() {
 		},
 	}
 
-	confirmFn := func(creq protocol.ConfirmRequest) bool {
-		fmt.Printf("\n[%s] %s\n", creq.Display, creq.Command)
-		return confirmSingle(creq)
-	}
-
 	a := app.New()
 	fmt.Println()
-	if err := a.RunAgent(context.Background(), req, confirmFn, printStream); err != nil {
+	if err := cli.RunOneShot(context.Background(), a, req); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
@@ -425,26 +421,6 @@ func runConfirmed(plan []protocol.CommandItem) {
 			return
 		}
 	}
-}
-
-// confirmSingle prompts the user to approve or deny a single command.
-func confirmSingle(req protocol.ConfirmRequest) bool {
-	reader := bufio.NewReader(os.Stdin)
-	switch req.Tier {
-	case permissions.TierDestructive.String():
-		fmt.Printf("\n⚠  DESTRUCTIVE — cannot be undone:\n   %s\n", req.Command)
-		fmt.Print("Type YES to confirm: ")
-		input, _ := reader.ReadString('\n')
-		return strings.TrimSpace(input) == "YES"
-	case permissions.TierElevated.String():
-		fmt.Printf("\n⚠  ELEVATED — requires elevated privileges:\n   %s\n", req.Command)
-		fmt.Print("Allow? [y/n]: ")
-	default:
-		fmt.Print("Allow? [y/n]: ")
-	}
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(strings.ToLower(input))
-	return input == "y" || input == "yes"
 }
 
 // confirmPlan prompts the user for confirmation of a batch plan.
