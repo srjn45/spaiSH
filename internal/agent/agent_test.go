@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -9,46 +10,70 @@ import (
 	"spaish/internal/ai"
 	"spaish/internal/protocol"
 	"spaish/internal/session"
+	"spaish/internal/tools"
 )
 
-// mockProvider returns a fixed sequence of text responses.
-type mockProvider struct {
-	responses []string
-	idx       int
+// scriptedProvider returns one pre-baked event sequence per Stream call.
+type scriptedProvider struct {
+	turns    [][]ai.Event
+	idx      int
+	lastReq  ai.Request
+	loopTool *ai.ToolCall // if set, every turn emits this tool call (ignores turns)
 }
 
-func (m *mockProvider) Available() bool { return true }
-func (m *mockProvider) Name() string    { return "mock" }
-func (m *mockProvider) Stream(_ context.Context, _ ai.Request) (<-chan ai.Event, error) {
-	ch := make(chan ai.Event)
+func (p *scriptedProvider) Available() bool { return true }
+func (p *scriptedProvider) Name() string    { return "scripted" }
+func (p *scriptedProvider) Complete(_ context.Context, _ []ai.Message) (<-chan string, error) {
+	ch := make(chan string)
 	close(ch)
 	return ch, nil
 }
-func (m *mockProvider) Complete(_ context.Context, _ []ai.Message) (<-chan string, error) {
-	ch := make(chan string, 1)
-	resp := ""
-	if m.idx < len(m.responses) {
-		resp = m.responses[m.idx]
-		m.idx++
+func (p *scriptedProvider) Stream(_ context.Context, req ai.Request) (<-chan ai.Event, error) {
+	p.lastReq = req
+	ch := make(chan ai.Event)
+	var evs []ai.Event
+	if p.loopTool != nil {
+		evs = []ai.Event{{Type: "tool_call", ToolCall: p.loopTool}, {Type: "done", Stop: "tool_use"}}
+	} else if p.idx < len(p.turns) {
+		evs = p.turns[p.idx]
+		p.idx++
+	} else {
+		evs = []ai.Event{{Type: "done", Stop: "end_turn"}}
 	}
-	go func() { ch <- resp; close(ch) }()
+	go func() {
+		defer close(ch)
+		for _, e := range evs {
+			ch <- e
+		}
+	}()
 	return ch, nil
 }
 
-// alwaysApprove is a ConfirmFunc that always approves.
-func alwaysApprove(_ protocol.ConfirmRequest) bool { return true }
-
-// alwaysDeny is a ConfirmFunc that always denies.
-func alwaysDeny(_ protocol.ConfirmRequest) bool { return false }
-
-// collectResponses drains the channel and returns all items.
-func collectResponses(ch <-chan protocol.Response) []protocol.Response {
-	var out []protocol.Response
-	for r := range ch {
-		out = append(out, r)
-	}
-	return out
+// fakeTool records its invocations and returns a fixed output.
+type fakeTool struct {
+	name  string
+	out   string
+	calls *int
 }
+
+func (t fakeTool) Name() string           { return t.name }
+func (t fakeTool) Description() string    { return "fake" }
+func (t fakeTool) Schema() map[string]any { return map[string]any{"type": "object"} }
+func (t fakeTool) Run(_ context.Context, _ json.RawMessage) (string, error) {
+	if t.calls != nil {
+		*t.calls++
+	}
+	return t.out, nil
+}
+
+func textEv(s string) ai.Event { return ai.Event{Type: "text", Text: s} }
+func doneEv() ai.Event         { return ai.Event{Type: "done", Stop: "end_turn"} }
+func toolEv(id, name, input string) ai.Event {
+	return ai.Event{Type: "tool_call", ToolCall: &ai.ToolCall{ID: id, Name: name, Input: json.RawMessage(input)}}
+}
+
+func alwaysApprove(_ protocol.ConfirmRequest) bool { return true }
+func alwaysDeny(_ protocol.ConfirmRequest) bool    { return false }
 
 func newSession(t *testing.T) *session.Session {
 	t.Helper()
@@ -57,223 +82,116 @@ func newSession(t *testing.T) *session.Session {
 	return s
 }
 
-// successExec always returns exit 0.
-func successExec(_ context.Context, _ string) (string, int) {
-	return "ok\n", 0
-}
-
-// failExec always returns exit 1.
-func failExec(_ context.Context, _ string) (string, int) {
-	return "permission denied\n", 1
-}
-
-// capturingMockProvider records the first call's message slice.
-type capturingMockProvider struct {
-	mockProvider
-	lastMessages []ai.Message
-}
-
-func (c *capturingMockProvider) Available() bool { return true }
-func (c *capturingMockProvider) Complete(ctx context.Context, msgs []ai.Message) (<-chan string, error) {
-	if c.lastMessages == nil {
-		c.lastMessages = append([]ai.Message(nil), msgs...)
+func collect(ch <-chan protocol.Response) []protocol.Response {
+	var out []protocol.Response
+	for r := range ch {
+		out = append(out, r)
 	}
-	return c.mockProvider.Complete(ctx, msgs)
+	return out
 }
 
-func TestAgentNoCommandsOnFirstTry(t *testing.T) {
-	// AI returns no bash block — goal immediately achieved.
-	p := &mockProvider{responses: []string{"Done, no commands needed."}}
-	cfg := agent.Config{MaxIterations: 3}
-	a := agent.NewWithExec(p, cfg, alwaysApprove, successExec)
-
-	resps := collectResponses(a.Run(context.Background(), &protocol.AgentRequest{Query: "what time is it"}, newSession(t)))
-
-	last := resps[len(resps)-1]
-	if last.Type != "done" {
-		t.Errorf("expected last type 'done', got %q", last.Type)
-	}
-	var text string
-	for _, r := range resps {
-		if r.Type == "text" {
-			text += r.Content
+func joinText(rs []protocol.Response) string {
+	var b strings.Builder
+	for _, r := range rs {
+		if r.Type == "text" || r.Type == "output" {
+			b.WriteString(r.Content)
 		}
 	}
-	if !strings.Contains(text, "Done") {
-		t.Errorf("expected AI text in response, got: %q", text)
+	return b.String()
+}
+
+func run(t *testing.T, p ai.Provider, cfg agent.Config, confirm agent.ConfirmFunc, reg *tools.Registry, query string) []protocol.Response {
+	t.Helper()
+	a := agent.NewWithRegistry(p, cfg, confirm, reg)
+	return collect(a.Run(context.Background(), &protocol.AgentRequest{Query: query}, newSession(t)))
+}
+
+func TestAgentFinishesWithNoTools(t *testing.T) {
+	p := &scriptedProvider{turns: [][]ai.Event{{textEv("all set"), doneEv()}}}
+	rs := run(t, p, agent.Config{}, alwaysApprove, tools.NewRegistry(), "do nothing")
+	if !strings.Contains(joinText(rs), "all set") {
+		t.Errorf("expected final text, got %q", joinText(rs))
 	}
 }
 
-func TestAgentCommandSucceedsThenDone(t *testing.T) {
-	// First AI call returns a command; second AI call returns no commands.
-	p := &mockProvider{responses: []string{
-		"I will list files.\n```bash\nls\n```",
-		"Goal achieved.",
+func TestAgentRunsToolThenFinishes(t *testing.T) {
+	calls := 0
+	reg := tools.NewRegistry(fakeTool{name: "bash", out: "ok", calls: &calls})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "bash", `{"command":"ls"}`), doneEv()},
+		{textEv("done"), doneEv()},
 	}}
-	cfg := agent.Config{MaxIterations: 5}
-	a := agent.NewWithExec(p, cfg, alwaysApprove, successExec)
-
-	resps := collectResponses(a.Run(context.Background(), &protocol.AgentRequest{Query: "list files"}, newSession(t)))
-
-	last := resps[len(resps)-1]
-	if last.Type != "done" {
-		t.Errorf("expected 'done', got %q", last.Type)
+	run(t, p, agent.Config{}, alwaysApprove, reg, "list files")
+	if calls != 1 {
+		t.Errorf("expected bash to run once, ran %d times", calls)
 	}
 }
 
-func TestAgentFixesFailureThenDone(t *testing.T) {
-	// First command fails; AI proposes fix; fix succeeds; AI says done.
-	p := &mockProvider{responses: []string{
-		"Running the command.\n```bash\nls /nonexistent\n```",
-		"That path doesn't exist. Let me fix it.\n```bash\nls /tmp\n```",
-		"All done.",
+func TestAgentConfirmationDeniedStops(t *testing.T) {
+	calls := 0
+	reg := tools.NewRegistry(fakeTool{name: "write_file", out: "wrote", calls: &calls})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "write_file", `{"path":"x"}`), doneEv()},
 	}}
-	cfg := agent.Config{MaxIterations: 5}
-
-	execFn := func(_ context.Context, cmd string) (string, int) {
-		if cmd == "ls /nonexistent" {
-			return "No such file or directory\n", 1
-		}
-		return "tmp contents\n", 0
+	rs := run(t, p, agent.Config{}, alwaysDeny, reg, "write a file")
+	if calls != 0 {
+		t.Errorf("denied tool should not run, ran %d times", calls)
 	}
-
-	a := agent.NewWithExec(p, cfg, alwaysApprove, execFn)
-	resps := collectResponses(a.Run(context.Background(), &protocol.AgentRequest{Query: "list nonexistent"}, newSession(t)))
-
-	last := resps[len(resps)-1]
-	if last.Type != "done" {
-		t.Errorf("expected 'done', got %q", last.Type)
-	}
-}
-
-func TestAgentMaxIterationsReached(t *testing.T) {
-	// AI always returns a failing command — should stop at max_iterations.
-	responses := make([]string, 10)
-	for i := range responses {
-		responses[i] = "Trying again.\n```bash\nls /nope\n```"
-	}
-	p := &mockProvider{responses: responses}
-	cfg := agent.Config{MaxIterations: 3}
-	a := agent.NewWithExec(p, cfg, alwaysApprove, failExec)
-
-	resps := collectResponses(a.Run(context.Background(), &protocol.AgentRequest{Query: "do something"}, newSession(t)))
-
-	last := resps[len(resps)-1]
-	if last.Type != "done" {
-		t.Errorf("expected 'done' at cap, got %q", last.Type)
-	}
-	var text string
-	for _, r := range resps {
-		text += r.Content
-	}
-	if !strings.Contains(text, "iteration limit") {
-		t.Errorf("expected 'iteration limit' message, got: %q", text)
-	}
-}
-
-func TestAgentConfirmationDeniedCancels(t *testing.T) {
-	// Write-tier command, user denies — loop should cancel cleanly.
-	p := &mockProvider{responses: []string{
-		"Creating a file.\n```bash\ntouch /tmp/test.txt\n```",
-	}}
-	cfg := agent.Config{MaxIterations: 5}
-	a := agent.NewWithExec(p, cfg, alwaysDeny, successExec)
-
-	resps := collectResponses(a.Run(context.Background(), &protocol.AgentRequest{Query: "create file"}, newSession(t)))
-
-	last := resps[len(resps)-1]
-	if last.Type != "done" {
-		t.Errorf("expected 'done' after cancel, got %q", last.Type)
-	}
-	var text string
-	for _, r := range resps {
-		text += r.Content
-	}
-	if !strings.Contains(strings.ToLower(text), "cancel") {
-		t.Errorf("expected cancellation message, got: %q", text)
+	if !strings.Contains(joinText(rs), "Cancelled by user") {
+		t.Errorf("expected cancellation message, got %q", joinText(rs))
 	}
 }
 
 func TestAgentAutonomousSkipsConfirm(t *testing.T) {
-	// autonomous=true — confirm function must never be called.
-	confirmCalled := false
-	confirmFn := func(_ protocol.ConfirmRequest) bool {
-		confirmCalled = true
-		return true
-	}
-	p := &mockProvider{responses: []string{
-		"Touching a file.\n```bash\ntouch /tmp/auto.txt\n```",
-		"Done.",
+	calls := 0
+	reg := tools.NewRegistry(fakeTool{name: "write_file", out: "wrote", calls: &calls})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "write_file", `{"path":"x"}`), doneEv()},
+		{textEv("done"), doneEv()},
 	}}
-	cfg := agent.Config{MaxIterations: 5, Autonomous: true}
-	a := agent.NewWithExec(p, cfg, confirmFn, successExec)
-
-	collectResponses(a.Run(context.Background(), &protocol.AgentRequest{Query: "create file"}, newSession(t)))
-
-	if confirmCalled {
-		t.Error("confirm function must not be called in autonomous mode")
+	run(t, p, agent.Config{Autonomous: true}, alwaysDeny, reg, "write a file")
+	if calls != 1 {
+		t.Errorf("autonomous write_file should run once, ran %d times", calls)
 	}
 }
 
-func TestAgentVerboseIncludesIterationHeader(t *testing.T) {
-	// After the first iteration (which fails), verbose mode should include a header.
-	p := &mockProvider{responses: []string{
-		"First try.\n```bash\nls /bad\n```",
-		"Fix try.\n```bash\nls /tmp\n```",
-		"Done.",
+func TestAgentUnknownToolContinues(t *testing.T) {
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "nope", `{}`), doneEv()},
+		{textEv("recovered"), doneEv()},
 	}}
-	cfg := agent.Config{MaxIterations: 5, Verbose: true}
-	execFn := func(_ context.Context, cmd string) (string, int) {
-		if cmd == "ls /bad" {
-			return "error\n", 1
-		}
-		return "ok\n", 0
-	}
-	a := agent.NewWithExec(p, cfg, alwaysApprove, execFn)
-
-	resps := collectResponses(a.Run(context.Background(), &protocol.AgentRequest{Query: "q", Verbose: false}, newSession(t)))
-
-	var text string
-	for _, r := range resps {
-		text += r.Content
-	}
-	if !strings.Contains(text, "iteration") {
-		t.Errorf("expected iteration header in verbose mode, got: %q", text)
+	rs := run(t, p, agent.Config{}, alwaysApprove, tools.NewRegistry(), "use a bad tool")
+	if !strings.Contains(joinText(rs), "recovered") {
+		t.Errorf("expected loop to continue after unknown tool, got %q", joinText(rs))
 	}
 }
 
-func TestAgentInjectsStdinBeforeQuery(t *testing.T) {
-	p := &capturingMockProvider{
-		mockProvider: mockProvider{responses: []string{"Done, no commands needed."}},
+func TestAgentMaxIterationsReached(t *testing.T) {
+	calls := 0
+	reg := tools.NewRegistry(fakeTool{name: "bash", out: "ok", calls: &calls})
+	p := &scriptedProvider{loopTool: &ai.ToolCall{ID: "1", Name: "bash", Input: json.RawMessage(`{"command":"ls"}`)}}
+	rs := run(t, p, agent.Config{Autonomous: true, MaxIterations: 2}, alwaysApprove, reg, "loop")
+	if calls != 2 {
+		t.Errorf("expected 2 tool runs at the iteration cap, got %d", calls)
 	}
+	if !strings.Contains(joinText(rs), "iteration limit") {
+		t.Errorf("expected iteration-limit message, got %q", joinText(rs))
+	}
+}
 
-	cfg := agent.Config{
-		MaxIterations: 3,
-		Stdin:         "total 42\nfoo.go  bar.go\n",
-	}
-	a := agent.NewWithExec(p, cfg, alwaysApprove, successExec)
-	collectResponses(a.Run(context.Background(), &protocol.AgentRequest{Query: "explain this"}, newSession(t)))
+func TestAgentInjectsStdinAndQuery(t *testing.T) {
+	p := &scriptedProvider{turns: [][]ai.Event{{textEv("ok"), doneEv()}}}
+	a := agent.NewWithRegistry(p, agent.Config{Stdin: "log line"}, alwaysApprove, tools.NewRegistry())
+	collect(a.Run(context.Background(), &protocol.AgentRequest{Query: "explain"}, newSession(t)))
 
-	capturedMessages := p.lastMessages
-	var pipedIdx, queryIdx int = -1, -1
-	for i, m := range capturedMessages {
-		if m.Role == "user" && strings.Contains(m.Content, "[piped input]") {
-			pipedIdx = i
-		}
-		if m.Role == "user" && m.Content == "explain this" {
-			queryIdx = i
-		}
+	msgs := p.lastReq.Messages
+	if len(msgs) < 2 {
+		t.Fatalf("expected stdin + query messages, got %d", len(msgs))
 	}
-	if pipedIdx == -1 {
-		t.Error("expected [piped input] message in agent messages")
+	if !strings.Contains(msgs[len(msgs)-2].Content, "log line") {
+		t.Errorf("stdin not injected: %+v", msgs)
 	}
-	if queryIdx == -1 {
-		t.Error("expected query message in agent messages")
-	}
-	if pipedIdx >= queryIdx {
-		t.Errorf("[piped input] (idx %d) must precede query (idx %d)", pipedIdx, queryIdx)
-	}
-	if !strings.Contains(capturedMessages[pipedIdx].Content, "foo.go") {
-		t.Errorf("piped input content missing, got: %q", capturedMessages[pipedIdx].Content)
+	if msgs[len(msgs)-1].Content != "explain" {
+		t.Errorf("query message = %q, want explain", msgs[len(msgs)-1].Content)
 	}
 }
