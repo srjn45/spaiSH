@@ -13,8 +13,16 @@ import (
 )
 
 // Config holds agent runtime settings, derived from spaid.toml [agent] section.
+// Execution modes for tool calls.
+const (
+	ModeManual = "manual" // confirm Write/Elevated/Destructive tool calls
+	ModeAuto   = "auto"   // execute everything without confirmation
+	ModePlan   = "plan"   // show the planned tool calls but never execute
+)
+
 type Config struct {
 	Autonomous    bool
+	Mode          string // "manual" (default) | "auto" | "plan"; overrides Autonomous
 	MaxIterations int
 	Verbose       bool
 	WorkingDir    string
@@ -85,7 +93,14 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 	}
 	messages = append(messages, ai.Message{Role: "user", Content: req.Query})
 
-	autonomous := a.config.Autonomous || req.Autonomous
+	mode := a.config.Mode
+	if mode == "" {
+		if a.config.Autonomous || req.Autonomous {
+			mode = ModeAuto
+		} else {
+			mode = ModeManual
+		}
+	}
 	verbose := a.config.Verbose || req.Verbose
 	maxIter := a.config.MaxIterations
 	if maxIter <= 0 {
@@ -127,6 +142,16 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 			return
 		}
 
+		// Plan mode: show the proposed tool calls and stop without executing.
+		if mode == ModePlan {
+			for _, tc := range toolCalls {
+				tier, display := classify(tc)
+				send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("▶ (plan) [%s] %s\n", tier.Display(), display)})
+			}
+			send(ctx, ch, protocol.Response{Type: "done"})
+			return
+		}
+
 		results := make([]ai.ToolResult, 0, len(toolCalls))
 		for _, tc := range toolCalls {
 			tool, ok := a.registry.Get(tc.Name)
@@ -136,7 +161,7 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 			}
 
 			tier, display := classify(tc)
-			if !autonomous && tier != permissions.TierPassthrough && tier != permissions.TierRead {
+			if mode == ModeManual && tier != permissions.TierPassthrough && tier != permissions.TierRead {
 				approved := a.confirmFn(protocol.ConfirmRequest{
 					Command:   display,
 					Tier:      tier.String(),

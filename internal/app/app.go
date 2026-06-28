@@ -128,8 +128,16 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 		return err
 	}
 
+	mode := agent.ModeManual
+	switch {
+	case req.DryRun:
+		mode = agent.ModePlan
+	case a.cfg.Agent.Autonomous || req.Agent.Autonomous:
+		mode = agent.ModeAuto
+	}
+
 	agentCfg := agent.Config{
-		Autonomous:    a.cfg.Agent.Autonomous || req.Agent.Autonomous,
+		Mode:          mode,
 		MaxIterations: a.cfg.Agent.MaxIterations,
 		Verbose:       a.cfg.Agent.Verbose || req.Agent.Verbose,
 		WorkingDir:    req.WorkingDir,

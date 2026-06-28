@@ -179,6 +179,21 @@ func TestAgentMaxIterationsReached(t *testing.T) {
 	}
 }
 
+func TestAgentPlanModeDoesNotExecute(t *testing.T) {
+	calls := 0
+	reg := tools.NewRegistry(fakeTool{name: "bash", out: "ok", calls: &calls})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "bash", `{"command":"rm -rf /tmp/x"}`), doneEv()},
+	}}
+	rs := run(t, p, agent.Config{Mode: agent.ModePlan}, alwaysApprove, reg, "clean up")
+	if calls != 0 {
+		t.Errorf("plan mode must not execute tools, ran %d times", calls)
+	}
+	if !strings.Contains(joinText(rs), "(plan)") {
+		t.Errorf("expected a plan line, got %q", joinText(rs))
+	}
+}
+
 func TestAgentInjectsStdinAndQuery(t *testing.T) {
 	p := &scriptedProvider{turns: [][]ai.Event{{textEv("ok"), doneEv()}}}
 	a := agent.NewWithRegistry(p, agent.Config{Stdin: "log line"}, alwaysApprove, tools.NewRegistry())
