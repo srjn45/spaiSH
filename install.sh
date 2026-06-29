@@ -1,18 +1,133 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eu
 
-INSTALL_DIR="$HOME/.local/bin"
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Configuration ---------------------------------------------------------------
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
+REPO="srjn45/spaiSH"
+# Resolve the repo dir for the from-source path. Works under bash; falls back to
+# the current directory for plain POSIX sh.
+if [ -n "${BASH_SOURCE:-}" ]; then
+  REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+  REPO_DIR="$(pwd)"
+fi
 
-echo "Building spai..."
-cd "$REPO_DIR"
+# Force from-source builds with: SPAI_FROM_SOURCE=1 ./install.sh
+FROM_SOURCE="${SPAI_FROM_SOURCE:-0}"
+
+# Helpers ---------------------------------------------------------------------
+have() { command -v "$1" >/dev/null 2>&1; }
+
+detect_os() {
+  os="$(uname -s)"
+  case "$os" in
+    Linux) echo "linux" ;;
+    Darwin) echo "darwin" ;;
+    *) echo "unsupported" ;;
+  esac
+}
+
+detect_arch() {
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64 | amd64) echo "amd64" ;;
+    arm64 | aarch64) echo "arm64" ;;
+    *) echo "unsupported" ;;
+  esac
+}
+
+# Download $1 to $2 using curl or wget. Returns non-zero on failure.
+download() {
+  url="$1"
+  out="$2"
+  if have curl; then
+    curl -fsSL "$url" -o "$out"
+  elif have wget; then
+    wget -qO "$out" "$url"
+  else
+    return 1
+  fi
+}
+
+# Fetch the latest release tag from the GitHub API. Prints empty on failure.
+latest_tag() {
+  api="https://api.github.com/repos/$REPO/releases/latest"
+  if have curl; then
+    curl -fsSL "$api" 2>/dev/null | grep '"tag_name"' | head -n1 | cut -d'"' -f4
+  elif have wget; then
+    wget -qO- "$api" 2>/dev/null | grep '"tag_name"' | head -n1 | cut -d'"' -f4
+  fi
+}
+
+build_from_source() {
+  if ! have go; then
+    echo "Error: cannot build from source — 'go' is not installed." >&2
+    echo "Install Go 1.25+ (https://go.dev/dl/) or use a prebuilt release." >&2
+    exit 1
+  fi
+  echo "Building spai from source..."
+  ( cd "$REPO_DIR" && go build -o "$INSTALL_DIR/spai" ./cmd/spai/ )
+  echo "  → Built spai from source"
+}
+
+install_prebuilt() {
+  os="$(detect_os)"
+  arch="$(detect_arch)"
+  if [ "$os" = "unsupported" ] || [ "$arch" = "unsupported" ]; then
+    echo "  → No prebuilt binary for $(uname -s)/$(uname -m)"
+    return 1
+  fi
+
+  tag="$(latest_tag)"
+  if [ -z "$tag" ]; then
+    echo "  → Could not determine latest release"
+    return 1
+  fi
+
+  asset="spai_${tag}_${os}_${arch}"
+  url="https://github.com/$REPO/releases/download/$tag/${asset}.tar.gz"
+  tmp="$(mktemp -d 2>/dev/null || mktemp -d -t spai)"
+  trap 'rm -rf "$tmp"' EXIT
+
+  echo "Downloading prebuilt spai ${tag} (${os}/${arch})..."
+  if ! download "$url" "$tmp/spai.tar.gz"; then
+    echo "  → Download failed: $url"
+    return 1
+  fi
+
+  if ! tar -xzf "$tmp/spai.tar.gz" -C "$tmp"; then
+    echo "  → Failed to extract archive"
+    return 1
+  fi
+
+  if [ ! -f "$tmp/spai" ]; then
+    echo "  → Archive did not contain a spai binary"
+    return 1
+  fi
+
+  install -m 0755 "$tmp/spai" "$INSTALL_DIR/spai" 2>/dev/null || {
+    cp "$tmp/spai" "$INSTALL_DIR/spai"
+    chmod 0755 "$INSTALL_DIR/spai"
+  }
+  echo "  → Installed prebuilt spai ${tag}"
+  return 0
+}
+
+# Install ---------------------------------------------------------------------
 mkdir -p "$INSTALL_DIR"
-go build -o "$INSTALL_DIR/spai" ./cmd/spai/
 
+if [ "$FROM_SOURCE" = "1" ]; then
+  build_from_source
+elif ! install_prebuilt; then
+  echo "Falling back to building from source..."
+  build_from_source
+fi
+
+# Per-terminal session isolation ---------------------------------------------
 # Inject a per-shell session ID so each terminal keeps its own conversation.
 # The literal $$ expands at shell startup to the current shell's PID.
 inject_session_id() {
-  local rc_file="$1"
+  rc_file="$1"
   if [ -f "$rc_file" ]; then
     if grep -q 'SPAI_SESSION_ID' "$rc_file"; then
       echo "  → SPAI_SESSION_ID already in $rc_file — skipping"
