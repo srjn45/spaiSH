@@ -1,24 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Stopping and disabling spaid service..."
-systemctl --user stop spaid 2>/dev/null || true
-systemctl --user disable spaid 2>/dev/null || true
-
-echo "Removing files..."
+echo "Removing spai binary..."
 rm -f "$HOME/.local/bin/spai"
-rm -f "$HOME/.local/bin/spaid"
-rm -f "$HOME/.local/bin/spaish"
-rm -f "$HOME/.config/systemd/user/spaid.service"
-rm -f "$HOME/.local/share/spaish/spaid.sock"
-
-systemctl --user daemon-reload
 
 # Remove the SPAI_SESSION_ID export lines added by install.sh.
 remove_session_id() {
   local rc_file="$1"
   if [ -f "$rc_file" ] && grep -q 'SPAI_SESSION_ID' "$rc_file"; then
-    sed -i '/# spaiSH: per-shell session isolation/d' "$rc_file"
+    sed -i '/# spai: per-terminal session isolation/d' "$rc_file"
     sed -i '/SPAI_SESSION_ID/d' "$rc_file"
     echo "  → Removed SPAI_SESSION_ID from $rc_file"
   fi
@@ -29,7 +19,7 @@ remove_session_id "$HOME/.bashrc"
 remove_session_id "$HOME/.zshrc"
 
 echo ""
-echo "spaiSH uninstalled."
+echo "spai uninstalled."
 echo ""
 echo "The following were NOT removed (your data):"
 echo "  ~/.config/spaish/spaid.toml      — your config"

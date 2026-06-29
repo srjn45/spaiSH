@@ -164,7 +164,7 @@ func TestMessagesForPromptNoSummary(t *testing.T) {
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(msgs))
 	}
-	if msgs[0] != (ai.Message{Role: "user", Content: "hello"}) {
+	if msgs[0].Role != "user" || msgs[0].Content != "hello" {
 		t.Errorf("unexpected message: %+v", msgs[0])
 	}
 }
@@ -375,5 +375,42 @@ func TestListSessionsEmpty(t *testing.T) {
 	}
 	if len(list) != 0 {
 		t.Errorf("expected 0 sessions, got %d", len(list))
+	}
+}
+
+func TestApproxTokensAndCompactOlder(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	s, _ := session.LoadByID("compact")
+	for i := 0; i < 6; i++ {
+		s.AddExchange("question number with some length", "answer with some content here too")
+	}
+	if s.ApproxTokens() == 0 {
+		t.Error("expected non-zero token estimate")
+	}
+	before := len(s.Messages)
+	s.CompactOlder("summary of older turns", 2)
+	if len(s.Messages) != 2 {
+		t.Errorf("expected 2 retained messages, got %d (was %d)", len(s.Messages), before)
+	}
+	if s.Summary != "summary of older turns" {
+		t.Errorf("summary not set: %q", s.Summary)
+	}
+	// The summary must surface in the prompt context.
+	prompt := s.MessagesForPrompt()
+	if len(prompt) != 3 || prompt[0].Role != "assistant" {
+		t.Errorf("expected summary + 2 messages in prompt, got %d", len(prompt))
+	}
+}
+
+func TestLatestSessionID(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	a, _ := session.LoadByID("old")
+	a.AddExchange("q", "a")
+	a.SaveCache()
+	b, _ := session.LoadByID("new")
+	b.AddExchange("q", "a")
+	b.SaveCache()
+	if got := session.LatestSessionID(); got == "" {
+		t.Error("expected a latest session id")
 	}
 }

@@ -3,84 +3,62 @@ package agent
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"spaish/internal/ai"
-	"spaish/internal/parser"
 	"spaish/internal/permissions"
 	"spaish/internal/protocol"
 	"spaish/internal/session"
+	"spaish/internal/tools"
 )
 
 // Config holds agent runtime settings, derived from spaid.toml [agent] section.
+// Execution modes for tool calls.
+const (
+	ModeManual = "manual" // confirm Write/Elevated/Destructive tool calls
+	ModeAuto   = "auto"   // execute everything without confirmation
+	ModePlan   = "plan"   // show the planned tool calls but never execute
+)
+
 type Config struct {
 	Autonomous    bool
+	Mode          string // "manual" (default) | "auto" | "plan"; overrides Autonomous
 	MaxIterations int
 	Verbose       bool
 	WorkingDir    string
 	GitBranch     string
-	Stdin         string // content from piped stdin; injected as [piped input] before the query
+	Stdin         string // content from piped stdin; injected before the query
 }
 
-// ConfirmFunc is called when a tier-gated command needs user approval.
-// Returns true if the user approved execution.
+// ConfirmFunc is called when a tier-gated tool call needs user approval.
 type ConfirmFunc func(req protocol.ConfirmRequest) bool
 
-// ExecFunc runs a shell command and returns combined stdout+stderr and exit code.
-// Injected for testing; production code uses defaultExec.
-type ExecFunc func(ctx context.Context, cmd string) (output string, exitCode int)
-
-// Agent orchestrates the agentic loop.
+// Agent orchestrates the tool-calling loop.
 type Agent struct {
 	provider  ai.Provider
 	config    Config
 	confirmFn ConfirmFunc
-	execFn    ExecFunc
+	registry  *tools.Registry
 }
 
-// New creates an Agent using the real shell executor.
+// New creates an Agent with the default tool registry.
 func New(provider ai.Provider, config Config, confirmFn ConfirmFunc) *Agent {
-	return &Agent{
-		provider:  provider,
-		config:    config,
-		confirmFn: confirmFn,
-		execFn:    defaultExec,
-	}
+	return NewWithRegistry(provider, config, confirmFn, tools.DefaultRegistry())
 }
 
-// NewWithExec creates an Agent with an injected exec function. Used in tests.
-func NewWithExec(provider ai.Provider, config Config, confirmFn ConfirmFunc, execFn ExecFunc) *Agent {
-	return &Agent{
-		provider:  provider,
-		config:    config,
-		confirmFn: confirmFn,
-		execFn:    execFn,
-	}
+// NewWithRegistry creates an Agent with an injected tool registry. Used in tests.
+func NewWithRegistry(provider ai.Provider, config Config, confirmFn ConfirmFunc, registry *tools.Registry) *Agent {
+	return &Agent{provider: provider, config: config, confirmFn: confirmFn, registry: registry}
 }
 
-func defaultExec(ctx context.Context, cmd string) (string, int) {
-	c := exec.CommandContext(ctx, "bash", "-c", cmd)
-	var out strings.Builder
-	c.Stdout = &out
-	c.Stderr = &out
-	if err := c.Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return out.String(), exitErr.ExitCode()
-		}
-		return out.String(), 1
-	}
-	return out.String(), 0
-}
+const systemPrompt = `You are spaiSH, an AI assistant embedded in the user's terminal. Accomplish the user's goal using the available tools.
 
-const systemPrompt = `You are an autonomous system agent. Help the user accomplish their goal by running shell commands.
-
-Rules:
-1. Explain what you are doing in 1-2 sentences.
-2. List exact shell commands in a single ` + "```bash" + ` code block — one per line, no comments.
-3. If the goal is achieved or no commands are needed, omit the code block entirely.
-4. If a previous command failed, diagnose why and propose a fix.
-5. Never use interactive commands (vim, nano, top) — use non-interactive alternatives.`
+Guidelines:
+1. Briefly explain what you are about to do (1-2 sentences) before acting.
+2. Use tools to inspect and change the system. Prefer the dedicated file tools (read_file, write_file, edit_file, glob, grep, list_dir) over bash for file work.
+3. Never run interactive commands (vim, nano, top, less) — use non-interactive alternatives.
+4. If a command fails, diagnose why from its output and try a fix.
+5. When the goal is achieved, stop calling tools and give a short summary of what you did.`
 
 // send writes resp to ch, returning false if ctx is cancelled first.
 func send(ctx context.Context, ch chan<- protocol.Response, resp protocol.Response) bool {
@@ -92,10 +70,8 @@ func send(ctx context.Context, ch chan<- protocol.Response, resp protocol.Respon
 	}
 }
 
-// Run starts the agent loop and returns a channel of Response chunks.
-// The channel is closed when the loop ends. The last response always has Type "done".
-// Session persistence is the caller's responsibility — the agent reads session history
-// via sess.MessagesForPrompt() but does not call sess.AddExchange or sess.Save.
+// Run starts the agent loop and returns a channel of Response chunks. The
+// channel is closed when the loop ends; the last response has Type "done".
 func (a *Agent) Run(ctx context.Context, req *protocol.AgentRequest, sess *session.Session) <-chan protocol.Response {
 	ch := make(chan protocol.Response, 16)
 	go func() {
@@ -106,72 +82,88 @@ func (a *Agent) Run(ctx context.Context, req *protocol.AgentRequest, sess *sessi
 }
 
 func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *session.Session, ch chan<- protocol.Response) {
-	sysCtx := fmt.Sprintf("Working directory: %s", a.config.WorkingDir)
+	system := systemPrompt + "\n\nWorking directory: " + a.config.WorkingDir
 	if a.config.GitBranch != "" {
-		sysCtx += fmt.Sprintf("\nGit branch: %s", a.config.GitBranch)
+		system += "\nGit branch: " + a.config.GitBranch
 	}
 
-	messages := []ai.Message{
-		{Role: "system", Content: systemPrompt + "\n\nSystem context:\n" + sysCtx},
-	}
-	messages = append(messages, sess.MessagesForPrompt()...)
+	messages := append([]ai.Message(nil), sess.MessagesForPrompt()...)
 	if a.config.Stdin != "" {
 		messages = append(messages, ai.Message{Role: "user", Content: "[piped input]\n" + a.config.Stdin})
 	}
 	messages = append(messages, ai.Message{Role: "user", Content: req.Query})
 
-	autonomous := a.config.Autonomous || req.Autonomous
+	mode := a.config.Mode
+	if mode == "" {
+		if a.config.Autonomous || req.Autonomous {
+			mode = ModeAuto
+		} else {
+			mode = ModeManual
+		}
+	}
 	verbose := a.config.Verbose || req.Verbose
 	maxIter := a.config.MaxIterations
 	if maxIter <= 0 {
-		maxIter = 5
+		maxIter = 25
 	}
+	toolSpecs := a.registry.Specs()
 
 	for iter := 0; iter < maxIter; iter++ {
-		if verbose && iter > 0 {
-			if !send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("\n── iteration %d/%d ──\n", iter+1, maxIter)}) {
-				return
-			}
-		}
-
-		// Call AI
-		textCh, err := a.provider.Complete(ctx, messages)
+		evCh, err := a.provider.Stream(ctx, ai.Request{System: system, Messages: messages, Tools: toolSpecs})
 		if err != nil {
 			send(ctx, ch, protocol.Response{Type: "error", Content: fmt.Sprintf("AI error: %v", err)})
 			send(ctx, ch, protocol.Response{Type: "done"})
 			return
 		}
 
-		var fullText strings.Builder
-		for chunk := range textCh {
-			fullText.WriteString(chunk)
-			if !send(ctx, ch, protocol.Response{Type: "text", Content: chunk}) {
+		var text strings.Builder
+		var toolCalls []ai.ToolCall
+		for ev := range evCh {
+			switch ev.Type {
+			case "text":
+				text.WriteString(ev.Text)
+				if !send(ctx, ch, protocol.Response{Type: "text", Content: ev.Text}) {
+					return
+				}
+			case "tool_call":
+				toolCalls = append(toolCalls, *ev.ToolCall)
+			case "error":
+				send(ctx, ch, protocol.Response{Type: "error", Content: ev.Err})
+				send(ctx, ch, protocol.Response{Type: "done"})
 				return
 			}
 		}
 
-		aiText := fullText.String()
-		commands := parser.ParseCommands(aiText)
+		messages = append(messages, ai.Message{Role: "assistant", Content: text.String(), ToolCalls: toolCalls})
 
-		// No commands = goal achieved
-		if len(commands) == 0 {
+		// No tool calls => the model is done.
+		if len(toolCalls) == 0 {
 			send(ctx, ch, protocol.Response{Type: "done"})
 			return
 		}
 
-		// Execute each command
-		var allOutput strings.Builder
-		failedAt := -1
+		// Plan mode: show the proposed tool calls and stop without executing.
+		if mode == ModePlan {
+			for _, tc := range toolCalls {
+				tier, display := classify(tc)
+				send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("▶ (plan) [%s] %s\n", tier.Display(), display)})
+			}
+			send(ctx, ch, protocol.Response{Type: "done"})
+			return
+		}
 
-		for cmdIdx, cmd := range commands {
-			tier := permissions.Classify(cmd)
-			needsConfirm := !autonomous &&
-				tier != permissions.TierPassthrough &&
-				tier != permissions.TierRead
+		results := make([]ai.ToolResult, 0, len(toolCalls))
+		for _, tc := range toolCalls {
+			tool, ok := a.registry.Get(tc.Name)
+			if !ok {
+				results = append(results, ai.ToolResult{ToolUseID: tc.ID, Content: "unknown tool: " + tc.Name, IsError: true})
+				continue
+			}
 
-			if needsConfirm {
+			tier, display := classify(tc)
+			if mode == ModeManual && tier != permissions.TierPassthrough && tier != permissions.TierRead {
 				approved := a.confirmFn(protocol.ConfirmRequest{
-					Command:   cmd,
+					Command:   display,
 					Tier:      tier.String(),
 					Display:   tier.Display(),
 					Iteration: iter + 1,
@@ -184,54 +176,41 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 			}
 
 			if verbose {
-				if !send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("▶ [%s] %s\n", tier.Display(), cmd)}) {
-					return
-				}
+				send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("▶ [%s] %s\n", tier.Display(), display)})
 			} else {
-				if !send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("▶ %s\n", cmd)}) {
-					return
-				}
+				send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("▶ %s\n", display)})
 			}
 
-			output, exitCode := a.execFn(ctx, cmd)
-			allOutput.WriteString(fmt.Sprintf("$ %s\n%s\n", cmd, output))
-
-			if exitCode != 0 || verbose {
-				if !send(ctx, ch, protocol.Response{Type: "output", Content: output}) {
-					return
-				}
+			out, runErr := tool.Run(ctx, tc.Input)
+			isErr := runErr != nil
+			content := out
+			if isErr {
+				content = runErr.Error()
 			}
+			results = append(results, ai.ToolResult{ToolUseID: tc.ID, Content: content, IsError: isErr})
 
-			if exitCode != 0 {
-				failedAt = cmdIdx
-				break
+			if isErr || verbose {
+				send(ctx, ch, protocol.Response{Type: "output", Content: content + "\n"})
 			}
 		}
 
-		// Build feedback message for next AI call
-		messages = append(messages, ai.Message{Role: "assistant", Content: aiText})
-
-		if failedAt >= 0 {
-			messages = append(messages, ai.Message{
-				Role: "user",
-				Content: fmt.Sprintf(
-					"Command failed (exit non-zero):\n%s\nDiagnose and propose a fix. If unfixable, explain why and respond with no code block.",
-					allOutput.String(),
-				),
-			})
-		} else {
-			messages = append(messages, ai.Message{
-				Role: "user",
-				Content: fmt.Sprintf(
-					"Commands completed successfully. Output:\n%s\nIf the goal is achieved, respond with no code block. Otherwise continue.",
-					allOutput.String(),
-				),
-			})
-		}
+		messages = append(messages, ai.Message{Role: "user", ToolResults: results})
 	}
 
-	// max_iterations reached
-	send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("\nReached iteration limit (%d). Here is where things stand.\n", maxIter)})
+	send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("\nReached iteration limit (%d). Stopping.\n", maxIter)})
 	send(ctx, ch, protocol.Response{Type: "done"})
 }
 
+// classify returns the permission tier and a human-readable display string for
+// a tool call.
+func classify(tc ai.ToolCall) (permissions.Tier, string) {
+	switch tc.Name {
+	case "bash":
+		cmd := tools.Command(tc.Input)
+		return permissions.Classify(cmd), cmd
+	case "write_file", "edit_file":
+		return permissions.TierWrite, tc.Name + " " + tools.PathArg(tc.Input)
+	default: // read_file, glob, grep, list_dir
+		return permissions.TierRead, tc.Name + " " + tools.PathArg(tc.Input)
+	}
+}

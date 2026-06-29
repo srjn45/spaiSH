@@ -2,173 +2,137 @@
 
 ## Overview
 
-spaiSH consists of two binaries and a configuration file:
-
-| Component | Purpose |
-|-----------|---------|
-| `spaid` | Background daemon — handles AI requests, manages context, enforces permissions |
-| `spai` | CLI client — sends queries to `spaid` via Unix socket, streams responses |
-| `spaid.toml` | User configuration — API endpoint, model, routing preferences |
-
----
-
-## System Layout
+`spai` is a single Go binary — no daemon, no socket, no background service. The
+CLI calls the agent engine in-process. The engine is decoupled from any
+front-end: it consumes a provider stream and emits a typed response stream, and
+the one-shot renderer and the interactive REPL are thin consumers of it.
 
 ```
-~/.config/spaish/
-└── spaid.toml              # User configuration
+cmd/spai ──▶ internal/app ──▶ internal/agent (tool-calling loop)
+                 │                   │
+                 │                   ├─▶ internal/ai        (providers: anthropic / openai / ollama)
+                 │                   ├─▶ internal/tools     (bash, read/write/edit, glob, grep, list_dir)
+                 │                   └─▶ internal/permissions (parser-based command classifier)
+                 ├─▶ internal/session  (file-backed history + auto-compaction)
+                 └─▶ internal/llm      (Ollama model management)
 
-~/.local/share/spaish/
-├── spaid.sock              # Unix socket (spaid listens here)
-├── spaid.log               # Daemon logs
-└── session.json            # Rolling session context
-
-~/.local/bin/
-├── spaid                   # Daemon binary
-└── spai                    # CLI client binary
+internal/cli  ──▶ one-shot renderer + interactive REPL (render the response stream)
 ```
 
 ---
 
-## The Daemon — `spaid`
+## The agent loop
 
-`spaid` runs as a systemd user service. It starts on login and runs silently in the background. It is the single brain behind all spaiSH functionality.
+`internal/agent` runs a native tool-calling loop:
 
-```
-                   ┌──────────────────┐
-  spai CLI ────────▶                  │
-  FUSE (Phase 2) ──▶     spaid        │◀──── Model Router
-  PAM (Phase 3) ───▶                  │           │
-  eBPF (Phase 3) ──▶  (Unix socket)   │   ┌───────┴───────┐
-                   └──────────────────┘ Local          Cloud
-                                       Model           API
-```
+1. Stream a request to the provider; forward text deltas to the front-end.
+2. Collect the tool calls the model emitted this turn.
+3. For each tool call, classify its risk and (in manual mode) ask the user.
+4. Execute approved tools via the registry; append the results to the
+   conversation.
+5. Repeat until the model stops calling tools or `max_iterations` is reached.
 
-### Responsibilities
+The loop is provider-agnostic and front-end-agnostic — it emits a stream of
+typed responses (text, tool activity, output, done, error).
 
-- **Request handling** — receives queries from `spai`, processes them, streams responses back
-- **Context management** — maintains session state: working directory, recent commands, git context, conversation history
-- **Permission classification** — classifies every proposed command before execution
-- **Model routing** — decides whether to use local or cloud model based on config and availability
-- **Session memory** — persists context within a session; summarizes when context grows large
+### Execution modes
+
+| Mode | Behaviour |
+|---|---|
+| **manual** (default) | Write / Elevated / Destructive tool calls require confirmation |
+| **auto** | Execute everything without prompting (`--autonomous`) |
+| **plan** | Show the proposed tool calls but never execute (`--dry-run`) |
 
 ---
 
-## Permission Tier Engine
+## Providers — `internal/ai`
 
-Every command `spaid` proposes to run is classified before execution. Classification uses a static rule set — fast, deterministic, and offline. The AI is only involved in ambiguous edge cases.
+A neutral `Provider` interface (`Stream` for tool-calling, `Complete` for plain
+text) with three implementations:
+
+- **anthropic** — native Anthropic Messages API (streaming SSE, `tool_use` /
+  `tool_result`, adaptive thinking). Default model `claude-opus-4-8`.
+- **openai** — any OpenAI-compatible `/chat/completions` endpoint with streaming
+  `tool_calls`.
+- **ollama** — local models via `/api/chat` with tool support.
+
+Selection is driven by config, the `--local` flag, and provider availability.
+
+---
+
+## Permission classifier — `internal/permissions`
+
+Every `bash` command is classified before it runs. Classification **parses** the
+command with `mvdan.cc/sh` and walks every simple command in pipelines, lists,
+and command substitutions, taking the most dangerous tier found. This fixes the
+gaps of substring matching: `rm  -rf`, `rm --recursive`, and `a && rm -rf b` are
+all caught, while `echo "rm -rf"` is not.
 
 | Tier | Examples | Behaviour |
-|------|---------|-----------|
-| **Read** | `ls`, `cat`, `ps`, `git log`, `df`, `journalctl` | Execute silently |
-| **Write** | `mkdir`, file edits, `git commit`, `touch` | Show plan, single confirmation |
-| **Elevated** | `sudo *`, `systemctl`, package installs | Explicit prompt, shows exact command |
-| **Destructive** | `rm -rf`, `mkfs`, `dd`, `DROP TABLE`, `git reset --hard` | Hard confirm, full command displayed |
+|---|---|---|
+| **Passthrough** | `ls`, `cd`, `pwd`, `echo` | trivial, no gate |
+| **Read** | `cat`, `grep`, `git log`, `ps` | execute silently |
+| **Write** | `mkdir`, `cp`, file edits, `git commit` | confirm in manual mode |
+| **Elevated** | `sudo *`, `systemctl restart`, package installs | explicit prompt |
+| **Destructive** | `rm -rf`, `mkfs`, `dd`, `git reset --hard` | hard confirm (type YES) |
 
-Safety decisions never depend on network availability. If the AI provider is unreachable, the permission engine still runs.
+Classification is static and offline — it runs even when no model is reachable.
 
 ---
 
-## Model Routing
+## Sessions — `internal/session`
 
-```
-Request arrives
-    ↓
-Simple passthrough? (cd, ls, pwd, clear, exit)
-    → Yes: run directly, skip AI entirely
-    ↓ No
-SPAI_API_KEY set and network reachable?
-    → Yes: route to configured cloud endpoint
-    ↓ No
-Ollama running locally?
-    → Yes: route to local model
-    ↓ No
-Error: "No AI provider available."
-```
+Sessions are file-backed under `~/.local/share/spaish/sessions/<id>/`. Each turn
+appends to the conversation; when a session's estimated token footprint exceeds
+the budget, older messages are summarised while recent turns are kept verbatim
+(auto-compaction). `SPAI_SESSION_ID` (set per-terminal by the installer) gives
+each terminal its own session; `spai resume` reopens the most recent one.
 
 ---
 
 ## Configuration
 
-`~/.config/spaish/spaid.toml`:
+`~/.config/spaish/spaid.toml` (written by `spai init`):
 
 ```toml
 [provider]
-endpoint = "https://api.example.com/v1"   # any OpenAI-compatible endpoint
-api_key_env = "SPAI_API_KEY"              # reads from environment, never stored here
-model = "your-model-name"                 # set to whichever model you use
+kind = "anthropic"                 # "anthropic" | "openai"
+endpoint = ""                      # OpenAI-compatible endpoint (kind = "openai")
+api_key_env = "ANTHROPIC_API_KEY"  # env var holding the key — never the key itself
+model = "claude-opus-4-8"
 
 [local]
 ollama_endpoint = "http://localhost:11434"
-local_model = "qwen2.5-coder"
+local_model = "qwen2.5-coder:7b"
 
 [routing]
-# Commands that bypass AI entirely
-passthrough_commands = ["cd", "ls", "pwd", "clear", "exit", "history"]
-# Set true to always use local model (privacy mode)
-prefer_local = false
+prefer_local = false               # always use the local model
 
-[permissions]
-# Seconds before elevated permission expires and must be re-confirmed
-sudo_session_timeout = 300
+[agent]
+autonomous = false                 # default to auto mode
+max_iterations = 25
+verbose = false
 ```
 
 ---
 
-## Phase Roadmap
-
-### Phase 1 — Core Daemon + Shell Integration (current)
-
-- `spaid` daemon with Unix socket
-- `spai` CLI client
-- Permission tier engine
-- Model routing (cloud + local)
-- Session context management
-- systemd user service
-- Single-command installer
-
-### Phase 2 — FUSE Filesystem
-
-A FUSE mount at `/ai/*` makes the daemon accessible from any process without an SDK:
-
-```bash
-cat /ai/explain/var/log/syslog        # explains the log
-cat /ai/fix/etc/nginx/nginx.conf      # returns corrected config
-cat /ai/summarise/home/user/docs/     # summarises a directory
-```
-
-Any program that can read a file gets AI capabilities.
-
-### Phase 3 — Deep System Integration
-
-- **PAM module** — context-aware authentication decisions
-- **eBPF probes** — real-time syscall observation for behavioral security monitoring
-- **Systemd integration** — `spaid` as a process supervisor
-
-### Phase 4 — Full Stack
-
-- Wayland compositor integration
-- GUI terminal with reasoning display
-- Intent manifest format for AI-native applications
-- Multi-provider abstraction layer
-
----
-
-## Source Layout
+## Source layout
 
 ```
 spaish/
-├── cmd/
-│   ├── spai/               # CLI client
-│   └── spaid/              # Daemon
+├── cmd/spai/                 # entry point, subcommands, init wizard
 ├── internal/
-│   ├── router/             # Model routing logic
-│   ├── permissions/        # Permission tier classification
-│   ├── context/            # Session context management
-│   └── socket/             # Unix socket client/server
-├── config/
-│   └── spaid.toml          # Default config template
-├── install.sh              # Installer script
-├── docs/                   # Documentation
+│   ├── app/                  # in-process orchestration
+│   ├── agent/                # tool-calling loop
+│   ├── ai/                   # provider interface + anthropic/openai/ollama
+│   ├── tools/                # tool registry and implementations
+│   ├── permissions/          # parser-based command classifier
+│   ├── cli/                  # one-shot renderer + REPL
+│   ├── session/              # file-backed sessions + auto-compaction
+│   ├── llm/                  # Ollama model management
+│   └── protocol/             # request/response types
+├── config/spaid.toml         # default config template
+├── install.sh / uninstall.sh
+├── docs/
 └── LICENSE
 ```

@@ -133,6 +133,53 @@ func (s *Session) Compact(summary string) {
 	s.Summary = summary
 }
 
+// ApproxTokens estimates the token footprint of the session's prompt context
+// (summary + messages) using a ~4-chars-per-token heuristic. Used to decide
+// when to auto-compact; it is an estimate, not an exact count.
+func (s *Session) ApproxTokens() int {
+	chars := len(s.Summary)
+	for _, m := range s.Messages {
+		chars += len(m.Content)
+		for _, tc := range m.ToolCalls {
+			chars += len(tc.Input)
+		}
+		for _, tr := range m.ToolResults {
+			chars += len(tr.Content)
+		}
+	}
+	return chars / 4
+}
+
+// CompactOlder stores summary as the session summary and keeps only the most
+// recent keep messages, discarding the rest. Used by auto-compaction.
+func (s *Session) CompactOlder(summary string, keep int) {
+	if keep < 0 {
+		keep = 0
+	}
+	if keep > len(s.Messages) {
+		keep = len(s.Messages)
+	}
+	recent := append([]ai.Message(nil), s.Messages[len(s.Messages)-keep:]...)
+	s.Summary = summary
+	s.Messages = recent
+}
+
+// LatestSessionID returns the ID of the most recently modified session, or ""
+// if there are none.
+func LatestSessionID() string {
+	list, err := ListSessions()
+	if err != nil || len(list) == 0 {
+		return ""
+	}
+	latest := list[0]
+	for _, s := range list[1:] {
+		if s.ModTime.After(latest.ModTime) {
+			latest = s
+		}
+	}
+	return latest.ID
+}
+
 // Clear removes all in-memory state and deletes the session directory from disk.
 func (s *Session) Clear() error {
 	s.Messages = nil

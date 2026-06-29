@@ -1,84 +1,50 @@
 # Roadmap
 
-## Phase 1 — Core Daemon + Shell Integration
+`spai` is a Claude-Code-style CLI agent. The roadmap below reflects that focus.
+The earlier "AI-native OS" ambitions (FUSE, eBPF, PAM, a Wayland compositor, a
+bootable ISO) are **parked** — see [Parked ideas](#parked-ideas) — in favour of
+being an excellent terminal AI agent first.
 
-**Status: In development**
+## Shipped
 
-The foundational layer. Establishes `spaid` as a working daemon and `spai` as a usable daily driver.
+The core agent is built and working:
 
-### Deliverables
+- [x] Single in-process `spai` binary (no daemon, socket, or systemd)
+- [x] Native tool-calling agent loop
+- [x] Multi-provider support — Anthropic (native), OpenAI-compatible, Ollama
+- [x] Tools — `bash`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `list_dir`
+- [x] Parser-based command-safety classification (mvdan.cc/sh) with permission tiers
+- [x] Execution modes — manual / auto / plan
+- [x] Polished one-shot renderer — spinner, tool display, tier confirmations
+- [x] Rich inline REPL — history, slash commands, `@file`, Ctrl+C interrupt
+- [x] `spai init` onboarding wizard with live connection test
+- [x] File-backed sessions with token-aware auto-compaction; `spai resume`
+- [x] `spai !!`, stdin piping, `--local` / `--autonomous` / `--dry-run`
 
-- [ ] `spaid` daemon — Go binary, Unix socket, systemd user service
-- [ ] `spai` CLI client — sends queries, streams responses
-- [ ] Permission tier engine — static rule-based command classification
-- [ ] Model router — cloud API + local Ollama fallback
-- [ ] Session context — working directory, recent commands, git state
-- [ ] `spai !!` — analyse last failed command
-- [ ] `--dry-run` flag — show plan without executing
-- [ ] `--local` flag — force local model
-- [ ] One-time disclaimer on first run
-- [ ] Single-command installer (`curl | bash`, no root)
-- [ ] Uninstaller
-- [ ] Config template with documentation
+## Next
 
-### Success Criteria
+- [ ] Live `/model` provider/model switching inside the REPL
+- [ ] Streamed markdown rendering (glamour) in the renderer
+- [ ] Shift-Tab mode cycling and Esc-to-interrupt key handling
+- [ ] Diff preview for `edit_file` before confirmation
+- [ ] MCP tool integration
+- [ ] More tools (web fetch, structured patch/apply)
+- [ ] Prebuilt release binaries
 
-A developer can install spaiSH on a fresh Linux machine and use `spai` to diagnose and fix a real system problem within 5 minutes, with no commands executing without their confirmation.
+## Parked ideas
 
----
+Genuinely interesting, but out of scope for now. The most promising — ambient
+post-error help and repeated-pattern → alias suggestions — can return later as an
+optional shell hook that shells out to `spai`, without fragile keystroke
+sniffing.
 
-## Phase 2 — FUSE Filesystem
-
-**Status: Planned**
-
-Makes `spaid` accessible from any process without an SDK or API call.
-
-### Deliverables
-
-- [ ] FUSE mount at `/ai/*`
-- [ ] `cat /ai/explain/<path>` — explain any file
-- [ ] `cat /ai/fix/<path>` — return corrected version of any config
-- [ ] `cat /ai/summarise/<path>` — summarise a file or directory
-- [ ] Mount management (auto-mount on boot, `spai mount/unmount`)
-
----
-
-## Phase 3 — Deep System Integration
-
-**Status: Research**
-
-Weaves `spaid` into the Linux execution fabric.
-
-### Deliverables
-
-- [ ] PAM module — context-aware authentication (experimental, opt-in)
-- [ ] eBPF probes — real-time syscall and network observation
-- [ ] Behavioural anomaly detection (unknown binary execution, unusual outbound calls)
-- [ ] Systemd integration — `spaid` as a service supervisor
-
----
-
-## Phase 4 — Full Stack
-
-**Status: Vision**
-
-Completes the AI-native OS story.
-
-### Deliverables
-
-- [ ] Wayland compositor integration — system-wide context awareness
-- [ ] GUI terminal with AI reasoning display
-- [ ] Intent manifest specification — apps as declarative intent files
-- [ ] Multi-provider abstraction — unified API across model providers
-- [ ] Bootable ISO (Linux base + spaiSH pre-installed)
-
----
+- FUSE filesystem (`cat /ai/explain/<path>`)
+- eBPF syscall/network observation and anomaly detection
+- PAM module for context-aware authentication
+- Wayland compositor integration / GUI terminal
+- Bootable ISO with `spai` pre-installed
 
 ## Versioning
 
-Releases follow semantic versioning: `MAJOR.MINOR.PATCH`
-
-- Phase 1 completion → `v0.1.0`
-- Phase 2 completion → `v0.2.0`
-- Phase 3 completion → `v0.3.0`
-- Phase 4 completion → `v1.0.0`
+Semantic versioning: `MAJOR.MINOR.PATCH`. The first tagged release of the
+refactored agent will be `v0.1.0`.
