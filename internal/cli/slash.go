@@ -18,7 +18,7 @@ func completer() *readline.PrefixCompleter {
 	return readline.NewPrefixCompleter(
 		readline.PcItem("/help"),
 		readline.PcItem("/mode", readline.PcItem("manual"), readline.PcItem("auto"), readline.PcItem("plan")),
-		readline.PcItem("/model"),
+		readline.PcItem("/model", readline.PcItem("anthropic"), readline.PcItem("openai"), readline.PcItem("ollama")),
 		readline.PcItem("/tools"),
 		readline.PcItem("/clear"),
 		readline.PcItem("/compact"),
@@ -55,8 +55,16 @@ func (r *REPL) handleSlash(line string) bool {
 		}
 
 	case "/model":
-		fmt.Printf("provider: %s\n", r.app.ProviderInfo())
-		fmt.Println(dim("change it in ~/.config/spaish/spaid.toml (or run `spai init`)"))
+		if len(args) == 0 {
+			r.printModels()
+			break
+		}
+		desc, err := r.app.SetModel(args)
+		if err != nil {
+			fmt.Printf("%s %v\n", red("✗"), err)
+			break
+		}
+		fmt.Printf("model → %s\n", bold(desc))
 
 	case "/tools":
 		for _, t := range tools.DefaultRegistry().Specs() {
@@ -86,6 +94,28 @@ func (r *REPL) runSession(command string) {
 	fmt.Println()
 }
 
+// printModels shows the active provider/model and the configured options.
+func (r *REPL) printModels() {
+	fmt.Printf("active: %s\n", bold(r.app.ProviderInfo()))
+	fmt.Println(dim("available:"))
+	for _, o := range r.app.ModelOptions() {
+		label := o.Provider
+		if o.Model != "" {
+			label += " / " + o.Model
+		}
+		status := dim("offline")
+		if o.Available {
+			status = "ready"
+		}
+		marker := "  "
+		if o.Active {
+			marker = cyan("→ ")
+		}
+		fmt.Printf("%s%s  %s\n", marker, cyan(label), dim("("+status+")"))
+	}
+	fmt.Println(dim("switch with: /model <provider> [model]  (e.g. /model ollama, /model openai:gpt-4o)"))
+}
+
 func (r *REPL) printHistory() {
 	sess, err := session.LoadByID(r.sessionID)
 	if err != nil {
@@ -104,7 +134,7 @@ const helpText = `
 Commands:
   /help              show this help
   /mode [m]          show or set execution mode (manual | auto | plan)
-  /model             show the active provider and model
+  /model [sel]       show providers, or switch (e.g. /model ollama, /model openai:gpt-4o)
   /tools             list available tools
   /clear             wipe the session's conversation context
   /compact           summarise and compact the session
