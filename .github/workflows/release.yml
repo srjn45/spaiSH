@@ -1,0 +1,60 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Determine version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Build cross-platform binaries
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CGO_ENABLED: "0"
+        run: |
+          set -eu
+          mkdir -p dist
+          targets="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64"
+          for target in $targets; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            name="spai_${VERSION}_${os}_${arch}"
+            echo "Building ${name}..."
+            GOOS="$os" GOARCH="$arch" go build \
+              -trimpath \
+              -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "dist/spai" ./cmd/spai/
+            tar -C dist -czf "dist/${name}.tar.gz" spai
+            rm -f dist/spai
+          done
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum *.tar.gz > "spai_${{ steps.version.outputs.version }}_checksums.txt"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*_checksums.txt
+          generate_release_notes: true

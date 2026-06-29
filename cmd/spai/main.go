@@ -19,6 +19,10 @@ import (
 	"spaish/internal/session"
 )
 
+// version is the spai build version. It is "dev" for local builds and is
+// overridden at release time via -ldflags "-X main.version=<tag>".
+var version = "dev"
+
 const disclaimer = `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   spaiSH — experimental personal project
@@ -372,6 +376,7 @@ func main() {
 	verbose := flag.Bool("verbose", false, "show full command output and iteration details")
 	autonomous := flag.Bool("autonomous", false, "run all commands without confirmation prompts")
 	legal := flag.Bool("legal", false, "print legal disclaimer and exit")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	sessionFlag := flag.String("session", "", "named session (default: $SPAI_SESSION_ID or 'default')")
 	flag.Usage = func() {
 		fmt.Println("Usage: spai [flags] <query>")
@@ -387,6 +392,11 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("spai %s\n", version)
+		os.Exit(0)
+	}
 
 	if *legal {
 		fmt.Print(legalText)

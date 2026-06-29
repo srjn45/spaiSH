@@ -27,8 +27,17 @@ git clone https://github.com/srjn45/spaiSH && cd spaiSH
 ./install.sh
 ```
 
-Requires Go 1.25+. Installs a single `spai` binary to `~/.local/bin`. No root,
-no systemd, no background service.
+`install.sh` downloads a **prebuilt binary** for your OS/arch from the latest
+[GitHub Release](https://github.com/srjn45/spaiSH/releases) when one is
+available, and otherwise **builds from source** (requires Go 1.25+). Force a
+source build with `SPAI_FROM_SOURCE=1 ./install.sh`. Override the install
+location with `INSTALL_DIR=/path ./install.sh`.
+
+Prebuilt binaries cover linux/amd64, linux/arm64, darwin/amd64 and darwin/arm64.
+Each release also ships a `*_checksums.txt` (sha256) for verification.
+
+Installs a single `spai` binary to `~/.local/bin`. No root, no systemd, no
+background service.
 
 Then configure a provider:
 
