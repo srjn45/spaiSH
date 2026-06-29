@@ -27,6 +27,17 @@ type App struct {
 	cloud  ai.Provider
 	local  ai.Provider
 	llmMgr *llm.Manager
+
+	// localModel is the model the local provider was built with, kept so a
+	// model-less "/model ollama" switch can reuse it.
+	localModel string
+
+	// override is the provider chosen interactively via the REPL's /model
+	// command. When set it takes precedence over routing for subsequent turns.
+	// activeName/activeModel describe the currently active selection for display.
+	override    ai.Provider
+	activeName  string
+	activeModel string
 }
 
 // Handler receives streamed responses from a running request.
@@ -73,7 +84,43 @@ func New() *App {
 		local = ai.NewLocalProvider(cfg.Local.OllamaEndpoint, localModel)
 	}
 
-	return &App{cfg: cfg, cloud: cloud, local: local, llmMgr: llmMgr}
+	name, model := cloudNameModel(cfg)
+	return &App{
+		cfg:         cfg,
+		cloud:       cloud,
+		local:       local,
+		llmMgr:      llmMgr,
+		localModel:  localModel,
+		activeName:  name,
+		activeModel: model,
+	}
+}
+
+// cloudNameModel returns the display name and model for the configured cloud
+// provider, applying the Anthropic default when no model is set.
+func cloudNameModel(cfg *config.Config) (name, model string) {
+	if cfg.Provider.Kind == "openai" {
+		return "openai", cfg.Provider.Model
+	}
+	model = cfg.Provider.Model
+	if model == "" {
+		model = ai.DefaultAnthropicModel
+	}
+	return "anthropic", model
+}
+
+// canonicalProvider maps a user-supplied provider name (and common aliases) to
+// its canonical form, or "" if unrecognised.
+func canonicalProvider(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "anthropic", "claude":
+		return "anthropic"
+	case "openai", "gpt":
+		return "openai"
+	case "ollama", "local":
+		return "ollama"
+	}
+	return ""
 }
 
 // buildCloudProvider constructs the remote provider from config. It defaults to
@@ -92,26 +139,135 @@ func buildCloudProvider(cfg *config.Config) ai.Provider {
 	}
 }
 
-// ProviderInfo returns a short description of the configured remote provider and
-// model, for display in the REPL.
-func (a *App) ProviderInfo() string {
-	model := a.cfg.Provider.Model
-	if model == "" && a.cfg.Provider.Kind != "openai" {
-		model = ai.DefaultAnthropicModel
+// activeProvider returns the provider currently in effect: the interactive
+// override if one was set via /model, otherwise the configured cloud provider.
+func (a *App) activeProvider() ai.Provider {
+	if a.override != nil {
+		return a.override
 	}
-	name := a.cloud.Name()
+	return a.cloud
+}
+
+// ProviderInfo returns a short description of the active provider and model, for
+// display in the REPL.
+func (a *App) ProviderInfo() string {
 	avail := "not configured"
-	if a.cloud.Available() {
+	if a.activeProvider().Available() {
 		avail = "ready"
 	}
-	if model == "" {
-		return fmt.Sprintf("%s (%s)", name, avail)
+	if a.activeModel == "" {
+		return fmt.Sprintf("%s (%s)", a.activeName, avail)
 	}
-	return fmt.Sprintf("%s / %s (%s)", name, model, avail)
+	return fmt.Sprintf("%s / %s (%s)", a.activeName, a.activeModel, avail)
+}
+
+// ModelOption describes a selectable provider+model and whether it is reachable
+// and currently active.
+type ModelOption struct {
+	Provider  string
+	Model     string
+	Available bool
+	Active    bool
+}
+
+// ModelOptions lists the providers configured for this session (the cloud
+// provider and the local provider), for display by the REPL's /model command.
+func (a *App) ModelOptions() []ModelOption {
+	cloudName, cloudModel := cloudNameModel(a.cfg)
+	opts := []ModelOption{
+		{
+			Provider:  cloudName,
+			Model:     cloudModel,
+			Available: a.cloud.Available(),
+			Active:    a.override == nil || a.activeName == cloudName,
+		},
+		{
+			Provider:  a.local.Name(),
+			Model:     a.localModel,
+			Available: a.local.Available(),
+		},
+	}
+	// Mark the active option precisely when an override is in effect.
+	if a.override != nil {
+		for i := range opts {
+			opts[i].Active = opts[i].Provider == a.activeName && opts[i].Model == a.activeModel
+		}
+	}
+	return opts
+}
+
+// anthropicKey resolves the Anthropic API key from config or the well-known env
+// var, mirroring buildCloudProvider.
+func (a *App) anthropicKey() string {
+	key := a.cfg.APIKey()
+	if key == "" {
+		key = os.Getenv("ANTHROPIC_API_KEY")
+	}
+	return key
+}
+
+// SetModel switches the active provider and/or model for subsequent turns in
+// this session. The change is in-memory only; it does not rewrite the config
+// file. It returns a short "provider / model" description on success, or an
+// error if the selection is unknown or unavailable.
+func (a *App) SetModel(args []string) (string, error) {
+	if len(args) == 0 {
+		return "", fmt.Errorf("usage: /model <provider> [model]  (e.g. anthropic, ollama, openai:gpt-4o)")
+	}
+	name, model := ai.ParseModelSelection(args, func(s string) bool { return canonicalProvider(s) != "" })
+	if name == "" {
+		name = a.activeName // model-only switch: keep the current provider
+	}
+	kind := canonicalProvider(name)
+	if kind == "" {
+		return "", fmt.Errorf("unknown provider %q (try: anthropic, openai, ollama)", name)
+	}
+
+	var p ai.Provider
+	switch kind {
+	case "anthropic":
+		if model == "" {
+			model = ai.DefaultAnthropicModel
+		}
+		p = ai.NewAnthropicProvider(a.anthropicKey(), model)
+	case "openai":
+		if model == "" {
+			model = a.cfg.Provider.Model
+		}
+		if model == "" {
+			return "", fmt.Errorf("specify a model for openai (e.g. /model openai:gpt-4o)")
+		}
+		endpoint := a.cfg.Provider.Endpoint
+		if endpoint == "" {
+			return "", fmt.Errorf("openai endpoint not configured — set [provider].endpoint in spaid.toml")
+		}
+		p = ai.NewOpenAIProvider(endpoint, a.cfg.APIKey(), model)
+	case "ollama":
+		if model == "" {
+			model = a.localModel
+		}
+		if model == "" {
+			return "", fmt.Errorf("specify a local model (e.g. /model ollama:qwen2.5-coder)")
+		}
+		p = ai.NewLocalProvider(a.cfg.Local.OllamaEndpoint, model)
+	}
+
+	if !p.Available() {
+		return "", fmt.Errorf("%s / %s is not available — check the API key, endpoint, or local runtime", kind, model)
+	}
+
+	a.override = p
+	a.activeName = kind
+	a.activeModel = model
+	if kind == "ollama" {
+		a.localModel = model
+	}
+	return fmt.Sprintf("%s / %s", kind, model), nil
 }
 
 func (a *App) providers() ai.ProviderSet {
 	return ai.ProviderSet{
+		Override:    a.override,
 		Cloud:       a.cloud,
 		Local:       a.local,
 		PreferLocal: a.cfg.Routing.PreferLocal,
