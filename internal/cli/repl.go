@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/chzyer/readline"
 
@@ -55,6 +56,7 @@ func historyFile() string {
 
 // Run starts the interactive loop. It returns when the user exits.
 func (r *REPL) Run() error {
+	var rl *readline.Instance
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:                 r.prompt(),
 		HistoryFile:            historyFile(),
@@ -63,6 +65,22 @@ func (r *REPL) Run() error {
 		AutoComplete:           completer(),
 		InterruptPrompt:        "^C",
 		EOFPrompt:              "exit",
+		// Read Shift-Tab from a wrapper that rewrites CSI Z to a sentinel rune,
+		// since readline's terminal layer otherwise drops it.
+		Stdin: newShiftTabReader(os.Stdin),
+		// Shift-Tab cycles the execution mode at the prompt. This runs in
+		// readline's line-editing goroutine, so it is safe to update the prompt
+		// here; returning false makes readline ignore the rune and redraw.
+		FuncFilterInputRune: func(rn rune) (rune, bool) {
+			if rn == shiftTabSentinel {
+				r.mode = cycleMode(r.mode)
+				if rl != nil {
+					rl.SetPrompt(r.prompt())
+				}
+				return 0, false
+			}
+			return rn, true
+		},
 	})
 	if err != nil {
 		return err
@@ -97,8 +115,8 @@ func (r *REPL) Run() error {
 	return nil
 }
 
-// runTurn sends a query to the agent, rendering the response. Ctrl+C cancels the
-// in-flight turn without exiting the REPL.
+// runTurn sends a query to the agent, rendering the response. Ctrl+C (SIGINT)
+// and Esc both cancel the in-flight turn without exiting the REPL.
 func (r *REPL) runTurn(line string) {
 	query := expandAtRefs(line)
 	req := &protocol.Request{
@@ -121,11 +139,74 @@ func (r *REPL) runTurn(line string) {
 		}
 	}()
 
+	stopEsc := r.watchEscape(cancel)
+	defer stopEsc()
+
 	fmt.Println()
 	if err := RunOneShot(ctx, r.app, req); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", red("error: "+err.Error()))
 	}
 	fmt.Println()
+}
+
+// watchEscape watches stdin for a lone Esc keypress while a turn runs and
+// cancels the turn when seen. It puts the terminal into cbreak mode (keeping
+// SIGINT working) for the duration and returns a function that stops watching
+// and restores the terminal. On non-terminal stdin (e.g. piped input) it is a
+// no-op, so the REPL still relies on SIGINT for cancellation.
+func (r *REPL) watchEscape(cancel context.CancelFunc) func() {
+	fd := int(os.Stdin.Fd())
+	restore, ok := enterCbreak(fd)
+	if !ok {
+		return func() {}
+	}
+
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		buf := make([]byte, 64)
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			n, err := os.Stdin.Read(buf)
+			if err != nil {
+				// A blocked read is unblocked by a past deadline on stop, and
+				// SIGINT delivery can surface as EINTR; either way, re-check
+				// whether we should exit and otherwise keep watching.
+				select {
+				case <-done:
+					return
+				default:
+					continue
+				}
+			}
+			// A terminal delivers an escape sequence atomically, so a lone Esc
+			// arrives as exactly one byte; multi-byte sequences (arrow keys,
+			// etc.) start with Esc but must not count as an interrupt.
+			if n == 1 && buf[0] == keyEsc {
+				fmt.Fprint(os.Stderr, dim(" (interrupted)\n"))
+				cancel()
+				return
+			}
+		}
+	}()
+
+	return func() {
+		close(done)
+		// Force any in-flight blocking read to return so the goroutine can see
+		// the done signal; bound the wait so a non-pollable stdin can't hang us.
+		_ = os.Stdin.SetReadDeadline(time.Now())
+		select {
+		case <-finished:
+		case <-time.After(500 * time.Millisecond):
+		}
+		_ = os.Stdin.SetReadDeadline(time.Time{})
+		_ = restore()
+	}
 }
 
 // expandAtRefs appends the contents of any @path tokens to the query as context.
