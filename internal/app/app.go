@@ -180,11 +180,41 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 	}
 
 	sess.AddExchange(req.Agent.Query, fullText.String())
+	a.maybeAutoCompact(ctx, sess, provider)
 	if err := sess.SaveCache(); err != nil {
 		log.Printf("session save error: %v", err)
 	}
 	sess.AppendHistory(time.Now().UTC(), req.Agent.Query, fullText.String(), outputText.String())
 	return nil
+}
+
+// autoCompactTokens is the approximate prompt-context budget above which the
+// session is summarised to keep future requests bounded.
+const autoCompactTokens = 100_000
+
+// maybeAutoCompact summarises older messages when the session's estimated token
+// footprint exceeds the budget, keeping the most recent few turns verbatim. It
+// is best-effort: on any error the session is left unchanged.
+func (a *App) maybeAutoCompact(ctx context.Context, sess *session.Session, provider ai.Provider) {
+	const keep = 4
+	if sess.ApproxTokens() <= autoCompactTokens || len(sess.Messages) <= keep {
+		return
+	}
+	older := sess.Messages[:len(sess.Messages)-keep]
+	msgs := make([]ai.Message, 0, len(older)+2)
+	if sess.Summary != "" {
+		msgs = append(msgs, ai.Message{Role: "user", Content: "Earlier summary:\n" + sess.Summary})
+	}
+	msgs = append(msgs, older...)
+	msgs = append(msgs, ai.Message{Role: "user", Content: "Summarise the conversation so far in one concise paragraph, preserving facts and decisions needed to continue."})
+
+	summary, err := ai.CompleteText(ctx, provider, "You compress conversation history into a concise summary for context continuity.", msgs)
+	if err != nil || summary == "" {
+		log.Printf("auto-compact skipped: %v", err)
+		return
+	}
+	sess.CompactOlder(summary, keep)
+	log.Printf("auto-compacted session to ~%d tokens", sess.ApproxTokens())
 }
 
 // RunLLM dispatches a local-model management command (status/install/list/...).

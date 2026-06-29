@@ -296,6 +296,23 @@ func isShellSession(id, shellID string) bool {
 	return true
 }
 
+// handleResumeCommand resumes the most recently used session in an interactive
+// REPL.
+func handleResumeCommand() {
+	id := session.LatestSessionID()
+	if id == "" {
+		fmt.Println("No previous sessions to resume. Start one with `spai`.")
+		return
+	}
+	showDisclaimer()
+	fmt.Printf("Resuming session %s\n", id)
+	cwd, _ := os.Getwd()
+	if err := cli.NewREPL(app.New(), id, cwd, gitBranch()).Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
 // handleSessionsCommand handles `spai sessions [<id> | --reset]`.
 func handleSessionsCommand(args []string) {
 	if len(args) == 0 {
@@ -343,6 +360,9 @@ func main() {
 			return
 		case "sessions":
 			handleSessionsCommand(os.Args[2:])
+			return
+		case "resume":
+			handleResumeCommand()
 			return
 		}
 	}
