@@ -20,16 +20,16 @@ The core agent is built and working:
 - [x] `spai init` onboarding wizard with live connection test
 - [x] File-backed sessions with token-aware auto-compaction; `spai resume`
 - [x] `spai !!`, stdin piping, `--local` / `--autonomous` / `--dry-run`
+- [x] Streamed markdown rendering (glamour) in the renderer
+- [x] Shift-Tab mode cycling and Esc-to-interrupt key handling
+- [x] Prebuilt release binaries — tagged cross-compiled releases + CI
 
 ## Next
 
 - [ ] Live `/model` provider/model switching inside the REPL
-- [ ] Streamed markdown rendering (glamour) in the renderer
-- [ ] Shift-Tab mode cycling and Esc-to-interrupt key handling
 - [ ] Diff preview for `edit_file` before confirmation
 - [ ] MCP tool integration
 - [ ] More tools (web fetch, structured patch/apply)
-- [ ] Prebuilt release binaries
 
 ## Parked ideas
 
