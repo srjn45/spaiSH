@@ -51,6 +51,8 @@ func DefaultRegistry() *Registry {
 		&Glob{},
 		&Grep{},
 		&ListDir{},
+		&WebFetch{},
+		&ApplyPatch{},
 	)
 }
 
