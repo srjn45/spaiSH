@@ -113,6 +113,7 @@ Commands:
 
 Tips:
   - Reference a file with @path to include its contents in your message.
-  - Ctrl+C cancels the current turn; Ctrl+D (or /quit) exits.
+  - Shift-Tab cycles the execution mode (manual → auto → plan).
+  - Esc or Ctrl+C cancels the current turn; Ctrl+D (or /quit) exits.
 
 `
