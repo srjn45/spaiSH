@@ -329,6 +329,9 @@ func main() {
 	// Handle subcommands before flag parsing so flags don't interfere.
 	if len(os.Args) >= 2 {
 		switch os.Args[1] {
+		case "init", "setup":
+			handleInitCommand(os.Args[2:])
+			return
 		case "llm":
 			handleLLMCommand(os.Args[2:])
 			return
@@ -352,6 +355,8 @@ func main() {
 	sessionFlag := flag.String("session", "", "named session (default: $SPAI_SESSION_ID or 'default')")
 	flag.Usage = func() {
 		fmt.Println("Usage: spai [flags] <query>")
+		fmt.Println("       spai                     start an interactive session")
+		fmt.Println("       spai init                configure your AI provider")
 		fmt.Println("       spai !!                  analyse last failed command")
 		fmt.Println("       spai clear [--lines N]   wipe session or keep latest N messages")
 		fmt.Println("       spai compact             AI-summarise session history")

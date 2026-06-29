@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 )
@@ -61,6 +62,21 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	return &cfg, nil
+}
+
+// Save writes cfg to path as TOML, creating parent directories as needed.
+func Save(path string, cfg *Config) error {
+	if dir := filepath.Dir(path); dir != "" {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return toml.NewEncoder(f).Encode(cfg)
 }
 
 // APIKey reads the API key from the environment variable named in cfg.Provider.APIKeyEnv.
