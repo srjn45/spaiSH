@@ -1,36 +1,34 @@
-# spaiSH daemon configuration
-# Copy this file to ~/.config/spaish/spaid.toml
+# spai configuration
+# Written by `spai init`. Copy to ~/.config/spaish/spaid.toml to edit by hand.
 
 [provider]
-# Any OpenAI-compatible API endpoint
-endpoint = "https://api.anthropic.com/v1"
-# Environment variable name that holds your API key (never put the key here)
-api_key_env = "SPAI_API_KEY"
-# Model name — set to whichever model your provider offers
-model = "claude-sonnet-4-6"
+# Remote provider kind: "anthropic" (native) or "openai" (OpenAI-compatible).
+kind = "anthropic"
+# Endpoint — only needed for kind = "openai" (include /v1).
+endpoint = ""
+# Environment variable name that holds your API key (never put the key here).
+api_key_env = "ANTHROPIC_API_KEY"
+# Model name.
+model = "claude-opus-4-8"
 
 [local]
-# Ollama endpoint (used when no API key is set, or prefer_local = true)
+# Ollama endpoint (used with prefer_local = true or `spai --local`).
 ollama_endpoint = "http://localhost:11434"
-# Local model to use via Ollama
-local_model = "qwen2.5-coder"
+# Local model to use via Ollama.
+local_model = "qwen2.5-coder:7b"
 
 [routing]
-# Commands that bypass AI entirely and run directly
-passthrough_commands = ["cd", "ls", "pwd", "clear", "exit", "history", "echo", "which", "env"]
-# Set to true to always use local model (full privacy mode)
+# Set to true to always use the local model (full privacy mode).
 prefer_local = false
 
 [permissions]
-# Seconds before an elevated (sudo) session permission expires
+# Seconds before an elevated (sudo) approval expires and must be re-confirmed.
 sudo_session_timeout = 300
 
-[spaish]
-# Shell to wrap. Defaults to $SHELL environment variable, then bash.
-shell = ""
-# Exit codes >= this value trigger AI suggestions. 1 = any failure.
-error_threshold = 1
-# Times a pattern must repeat before a suggestion is shown.
-pattern_min_count = 3
-# Number of recent command+output pairs kept in the smart context window.
-context_window = 20
+[agent]
+# Default to auto mode (run tool calls without confirmation).
+autonomous = false
+# Maximum tool-calling iterations per request.
+max_iterations = 25
+# Verbose tool output.
+verbose = false

@@ -81,6 +81,10 @@ func (p *OllamaProvider) Stream(ctx context.Context, req Request) (<-chan Event,
 		Stream   bool        `json:"stream"`
 	}
 
+	// Always stream for responsive output. Models that support Ollama's native
+	// tool-calling return structured tool_calls in the final streamed message;
+	// models that instead print tool calls as text are handled by the inline
+	// fallback below.
 	body := reqBody{Model: model, Messages: toOllamaMessages(req.System, req.Messages), Stream: true}
 	for _, t := range req.Tools {
 		var td toolDef
@@ -117,6 +121,7 @@ func (p *OllamaProvider) Stream(ctx context.Context, req Request) (<-chan Event,
 		defer close(ch)
 
 		var toolCalls []ollamaToolCall
+		var content strings.Builder
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 		for scanner.Scan() {
@@ -128,6 +133,7 @@ func (p *OllamaProvider) Stream(ctx context.Context, req Request) (<-chan Event,
 				continue
 			}
 			if event.Message.Content != "" {
+				content.WriteString(event.Message.Content)
 				select {
 				case ch <- Event{Type: "text", Text: event.Message.Content}:
 				case <-ctx.Done():
@@ -138,6 +144,13 @@ func (p *OllamaProvider) Stream(ctx context.Context, req Request) (<-chan Event,
 			if event.Done {
 				break
 			}
+		}
+
+		// Degraded fallback: some local models emit tool calls as JSON text in
+		// the content instead of structured tool_calls. Recover them so the
+		// agent loop can still execute the requested actions.
+		if len(toolCalls) == 0 && len(req.Tools) > 0 {
+			toolCalls = extractInlineToolCalls(content.String())
 		}
 
 		stop := "stop"
@@ -153,6 +166,72 @@ func (p *OllamaProvider) Stream(ctx context.Context, req Request) (<-chan Event,
 	}()
 
 	return ch, nil
+}
+
+// extractInlineToolCalls scans free-form text for JSON objects shaped like
+// {"name": "...", "arguments": {...}} and returns them as tool calls. It is a
+// best-effort fallback for local models that print tool calls as text (often
+// inside ```json fences) rather than emitting structured tool_calls.
+func extractInlineToolCalls(s string) []ollamaToolCall {
+	var calls []ollamaToolCall
+	for i := 0; i < len(s); {
+		if s[i] != '{' {
+			i++
+			continue
+		}
+		end := matchBrace(s, i)
+		if end < 0 {
+			break
+		}
+		var probe struct {
+			Name      string          `json:"name"`
+			Arguments json.RawMessage `json:"arguments"`
+		}
+		if err := json.Unmarshal([]byte(s[i:end+1]), &probe); err == nil && probe.Name != "" && len(probe.Arguments) > 0 {
+			var oc ollamaToolCall
+			oc.Function.Name = probe.Name
+			oc.Function.Arguments = probe.Arguments
+			calls = append(calls, oc)
+			i = end + 1
+		} else {
+			i++
+		}
+	}
+	return calls
+}
+
+// matchBrace returns the index of the '}' that closes the '{' at start, honouring
+// string literals and escapes, or -1 if unbalanced.
+func matchBrace(s string, start int) int {
+	depth := 0
+	inStr := false
+	esc := false
+	for j := start; j < len(s); j++ {
+		c := s[j]
+		if inStr {
+			switch {
+			case esc:
+				esc = false
+			case c == '\\':
+				esc = true
+			case c == '"':
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return j
+			}
+		}
+	}
+	return -1
 }
 
 // toOllamaMessages converts neutral messages into Ollama chat messages.

@@ -138,6 +138,65 @@ func TestOllamaStreamToolCall(t *testing.T) {
 	}
 }
 
+// TestOllamaInlineToolCallFallback covers local models that emit tool calls as
+// JSON text (often fenced) instead of structured tool_calls.
+func TestOllamaInlineToolCallFallback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			w.WriteHeader(http.StatusOK)
+		case "/api/chat":
+			// Non-streaming response whose content embeds tool calls as text.
+			body := map[string]any{
+				"message": map[string]any{
+					"role": "assistant",
+					"content": "I'll do it.\n```json\n" +
+						`{"name": "write_file", "arguments": {"path": "/tmp/x", "content": "hi"}}` +
+						"\n```\nThen read it:\n```json\n" +
+						`{"name": "read_file", "arguments": {"path": "/tmp/x"}}` +
+						"\n```",
+				},
+				"done": true,
+			}
+			json.NewEncoder(w).Encode(body)
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder")
+	ch, err := p.Stream(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: "user", Content: "write then read"}},
+		Tools: []ai.ToolSpec{
+			{Name: "write_file", Schema: map[string]any{"type": "object"}},
+			{Name: "read_file", Schema: map[string]any{"type": "object"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	var calls []*ai.ToolCall
+	for _, ev := range drain(t, ch) {
+		if ev.Type == "tool_call" {
+			calls = append(calls, ev.ToolCall)
+		}
+	}
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 recovered tool calls, got %d", len(calls))
+	}
+	if calls[0].Name != "write_file" || calls[1].Name != "read_file" {
+		t.Errorf("unexpected recovered calls: %s, %s", calls[0].Name, calls[1].Name)
+	}
+	var args struct {
+		Path    string `json:"path"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(calls[0].Input, &args); err != nil || args.Path != "/tmp/x" || args.Content != "hi" {
+		t.Errorf("bad recovered args: %s (err=%v)", calls[0].Input, err)
+	}
+}
+
 func TestAnthropicAvailableAndName(t *testing.T) {
 	p := ai.NewAnthropicProvider("sk-test", "")
 	if !p.Available() {
