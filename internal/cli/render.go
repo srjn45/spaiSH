@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/glamour"
+	"golang.org/x/term"
+
 	"spaish/internal/permissions"
 	"spaish/internal/protocol"
 )
@@ -32,10 +35,11 @@ func red(s string) string    { return ansiRed + s + ansiReset }
 func yellow(s string) string { return ansiYellow + s + ansiReset }
 func bold(s string) string   { return ansiBold + s + ansiReset }
 
-// RenderResponse writes one streamed response chunk to the terminal. Tool
-// activity lines (prefixed with ▶) are highlighted; tool output is dimmed;
-// errors go to stderr in red. Plain assistant prose is printed verbatim so
-// streaming stays smooth.
+// RenderResponse writes one streamed response chunk to the terminal without
+// markdown styling. Tool activity lines (prefixed with ▶) are highlighted; tool
+// output is dimmed; errors go to stderr in red. It is used for simple status
+// streams (e.g. session commands); agent turns use a *Renderer instead so
+// assistant prose can be rendered as markdown.
 func RenderResponse(resp protocol.Response) {
 	switch resp.Type {
 	case "text":
@@ -49,6 +53,97 @@ func RenderResponse(resp protocol.Response) {
 	case "error":
 		fmt.Fprintf(os.Stderr, "\n%s\n", red("error: "+resp.Content))
 	}
+}
+
+// Renderer renders a streamed agent turn, treating the model's natural-language
+// prose as markdown via glamour. Because glamour renders complete documents (not
+// token deltas), prose is buffered and flushed as a unit when the prose block
+// ends — at a tool-call line (▶), tool output, an error, or turn completion.
+// Tool-call lines stay cyan, tool output dim, and errors red, exactly as before.
+//
+// When stdout is not a TTY (piped output), markdown rendering is disabled and
+// prose is written verbatim so piping stays clean and ANSI-free.
+type Renderer struct {
+	tty bool                  // whether stdout is a terminal
+	md  *glamour.TermRenderer // nil when output is not a TTY or glamour init failed
+	buf strings.Builder       // accumulated prose awaiting a flush
+}
+
+// NewRenderer constructs a Renderer. Markdown and ANSI styling are enabled only
+// when stdout is a terminal; the glamour style is auto-detected (dark/light)
+// with a dark default. When piped, all output is plain text.
+func NewRenderer() *Renderer {
+	r := &Renderer{tty: isTerminal(os.Stdout)}
+	if !r.tty {
+		return r
+	}
+	width := 80
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		width = w
+	}
+	md, err := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(width),
+	)
+	if err == nil {
+		r.md = md
+	}
+	return r
+}
+
+// Render handles one streamed response chunk, buffering prose and flushing it as
+// markdown at block boundaries.
+func (r *Renderer) Render(resp protocol.Response) {
+	switch resp.Type {
+	case "text":
+		if strings.HasPrefix(resp.Content, "▶") {
+			r.Flush()
+			fmt.Print(r.style(resp.Content, cyan))
+		} else {
+			r.buf.WriteString(resp.Content)
+		}
+	case "output":
+		r.Flush()
+		fmt.Print(r.style(resp.Content, dim))
+	case "error":
+		r.Flush()
+		fmt.Fprintf(os.Stderr, "\n%s\n", r.style("error: "+resp.Content, red))
+	case "done":
+		r.Flush()
+	}
+}
+
+// style applies an ANSI color helper only when stdout is a terminal.
+func (r *Renderer) style(s string, fn func(string) string) string {
+	if !r.tty {
+		return s
+	}
+	return fn(s)
+}
+
+// Flush renders any buffered prose. With a TTY it is rendered as markdown;
+// otherwise (or if rendering fails) it is written verbatim.
+func (r *Renderer) Flush() {
+	if r.buf.Len() == 0 {
+		return
+	}
+	text := r.buf.String()
+	r.buf.Reset()
+	if r.md == nil {
+		fmt.Print(text)
+		return
+	}
+	out, err := r.md.Render(text)
+	if err != nil {
+		fmt.Print(text)
+		return
+	}
+	fmt.Print(out)
+}
+
+// isTerminal reports whether f refers to a terminal (vs. a pipe or file).
+func isTerminal(f *os.File) bool {
+	return term.IsTerminal(int(f.Fd()))
 }
 
 // Spinner shows an animated working indicator on stderr until stopped. Output

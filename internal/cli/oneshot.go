@@ -26,10 +26,12 @@ func RunOneShot(ctx context.Context, a *app.App, req *protocol.Request) error {
 		return PromptConfirm(creq)
 	}
 
+	rd := NewRenderer()
 	err := a.RunAgent(ctx, req, confirm, func(resp protocol.Response) {
 		stopSpinner()
-		RenderResponse(resp)
+		rd.Render(resp)
 	})
 	stopSpinner()
+	rd.Flush()
 	return err
 }
