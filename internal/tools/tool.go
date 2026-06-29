@@ -74,6 +74,19 @@ func (r *Registry) Specs() []ai.ToolSpec {
 	return specs
 }
 
+// Add appends tools to the registry, preserving order and keeping the dedupe
+// behavior of NewRegistry: a tool whose name is already registered is skipped.
+// Used to extend the built-in set with dynamically discovered tools (e.g. MCP).
+func (r *Registry) Add(tools ...Tool) {
+	for _, t := range tools {
+		if _, exists := r.tools[t.Name()]; exists {
+			continue
+		}
+		r.tools[t.Name()] = t
+		r.order = append(r.order, t.Name())
+	}
+}
+
 // objectSchema is a small helper for building an object JSON schema.
 func objectSchema(props map[string]any, required ...string) map[string]any {
 	return map[string]any{

@@ -28,7 +28,7 @@ The core agent is built and working:
 
 - [ ] Live `/model` provider/model switching inside the REPL
 - [ ] Diff preview for `edit_file` before confirmation
-- [ ] MCP tool integration
+- [x] MCP tool integration
 - [ ] More tools (web fetch, structured patch/apply)
 
 ## Parked ideas

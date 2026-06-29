@@ -221,7 +221,13 @@ func classify(tc ai.ToolCall) (permissions.Tier, string) {
 		return permissions.Classify(cmd), cmd
 	case "write_file", "edit_file":
 		return permissions.TierWrite, tc.Name + " " + tools.PathArg(tc.Input)
-	default: // read_file, glob, grep, list_dir
+	default:
+		// MCP tools (mcp__<server>__<tool>) are external; gate them at Write
+		// tier so they require confirmation in manual mode.
+		if strings.HasPrefix(tc.Name, "mcp__") {
+			return permissions.TierWrite, tc.Name
+		}
+		// read_file, glob, grep, list_dir
 		return permissions.TierRead, tc.Name + " " + tools.PathArg(tc.Input)
 	}
 }

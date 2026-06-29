@@ -32,3 +32,20 @@ autonomous = false
 max_iterations = 25
 # Verbose tool output.
 verbose = false
+
+# External MCP (Model Context Protocol) servers. Each server is spawned over
+# stdio and its tools are exposed to the model as mcp__<name>__<tool>. They are
+# treated as Write-tier and confirmed in manual mode. A server that fails to
+# start or handshake is logged and skipped — spai still runs without it.
+# Declare one [[mcp.servers]] block per server:
+#
+# [[mcp.servers]]
+# name = "filesystem"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "/some/dir"]
+# # env = ["KEY=VALUE"]   # optional extra environment variables
+#
+# [[mcp.servers]]
+# name = "git"
+# command = "uvx"
+# args = ["mcp-server-git", "--repository", "/path/to/repo"]

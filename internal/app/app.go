@@ -11,14 +11,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"spaish/internal/agent"
 	"spaish/internal/ai"
 	"spaish/internal/config"
 	"spaish/internal/llm"
+	"spaish/internal/mcp"
 	"spaish/internal/protocol"
 	"spaish/internal/session"
+	"spaish/internal/tools"
 )
 
 // App holds the shared runtime: config, providers, and the local model manager.
@@ -38,6 +41,15 @@ type App struct {
 	override    ai.Provider
 	activeName  string
 	activeModel string
+
+	// MCP servers are spawned lazily on the first agent run and kept alive for
+	// the rest of the session (so REPL turns reuse the same processes). mcpCtx
+	// owns their lifetime; Close cancels it and shuts the servers down.
+	mcpOnce   sync.Once
+	mcpMgr    *mcp.Manager
+	mcpTools  []tools.Tool
+	mcpCtx    context.Context
+	mcpCancel context.CancelFunc
 }
 
 // Handler receives streamed responses from a running request.
@@ -322,7 +334,7 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 		Stdin:         req.Stdin,
 	}
 
-	ag := agent.New(provider, agentCfg, confirmFn)
+	ag := agent.NewWithRegistry(provider, agentCfg, confirmFn, a.toolRegistry())
 
 	var fullText, outputText strings.Builder
 	for resp := range ag.Run(ctx, req.Agent, sess) {
@@ -342,6 +354,46 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 	}
 	sess.AppendHistory(time.Now().UTC(), req.Agent.Query, fullText.String(), outputText.String())
 	return nil
+}
+
+// toolRegistry returns the built-in tools plus any tools discovered from the
+// configured MCP servers. The MCP servers are spawned once per session.
+func (a *App) toolRegistry() *tools.Registry {
+	a.ensureMCP()
+	reg := tools.DefaultRegistry()
+	reg.Add(a.mcpTools...)
+	return reg
+}
+
+// ensureMCP spawns the configured MCP servers exactly once, discovers their
+// tools, and records them for reuse across turns. Failures are logged and
+// skipped inside mcp.Load, so this never prevents the agent from running.
+func (a *App) ensureMCP() {
+	a.mcpOnce.Do(func() {
+		if len(a.cfg.MCP.Servers) == 0 {
+			return
+		}
+		a.mcpCtx, a.mcpCancel = context.WithCancel(context.Background())
+		servers := make([]mcp.ServerConfig, 0, len(a.cfg.MCP.Servers))
+		for _, s := range a.cfg.MCP.Servers {
+			servers = append(servers, mcp.ServerConfig{
+				Name:    s.Name,
+				Command: s.Command,
+				Args:    s.Args,
+				Env:     s.Env,
+			})
+		}
+		a.mcpMgr, a.mcpTools = mcp.Load(a.mcpCtx, servers, log.Printf)
+	})
+}
+
+// Close releases session-scoped resources, shutting down any spawned MCP
+// servers. It is safe to call multiple times and on an App with no MCP servers.
+func (a *App) Close() error {
+	if a.mcpCancel != nil {
+		a.mcpCancel()
+	}
+	return a.mcpMgr.Close()
 }
 
 // autoCompactTokens is the approximate prompt-context budget above which the

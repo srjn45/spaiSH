@@ -155,6 +155,23 @@ func TestAgentAutonomousSkipsConfirm(t *testing.T) {
 	}
 }
 
+// TestAgentMCPToolIsGated verifies that an mcp__* tool is treated as Write tier
+// and therefore requires confirmation in manual mode (denying it stops the run).
+func TestAgentMCPToolIsGated(t *testing.T) {
+	calls := 0
+	reg := tools.NewRegistry(fakeTool{name: "mcp__fs__read", out: "data", calls: &calls})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "mcp__fs__read", `{}`), doneEv()},
+	}}
+	rs := run(t, p, agent.Config{}, alwaysDeny, reg, "use mcp tool")
+	if calls != 0 {
+		t.Errorf("denied MCP tool should not run, ran %d times", calls)
+	}
+	if !strings.Contains(joinText(rs), "Cancelled by user") {
+		t.Errorf("expected MCP tool to be gated, got %q", joinText(rs))
+	}
+}
+
 func TestAgentUnknownToolContinues(t *testing.T) {
 	p := &scriptedProvider{turns: [][]ai.Event{
 		{toolEv("1", "nope", `{}`), doneEv()},
