@@ -26,12 +26,14 @@ const (
 	ansiBold   = "\033[1m"
 	ansiCyan   = "\033[36m"
 	ansiRed    = "\033[31m"
+	ansiGreen  = "\033[32m"
 	ansiYellow = "\033[33m"
 )
 
 func dim(s string) string    { return ansiDim + s + ansiReset }
 func cyan(s string) string   { return ansiCyan + s + ansiReset }
 func red(s string) string    { return ansiRed + s + ansiReset }
+func green(s string) string  { return ansiGreen + s + ansiReset }
 func yellow(s string) string { return ansiYellow + s + ansiReset }
 func bold(s string) string   { return ansiBold + s + ansiReset }
 
@@ -207,17 +209,40 @@ func PromptConfirm(req protocol.ConfirmRequest) bool {
 	switch req.Tier {
 	case permissions.TierDestructive.String():
 		fmt.Printf("\n%s\n   %s\n", red(bold("⚠  DESTRUCTIVE — cannot be undone:")), req.Command)
+		printDiffPreview(req)
 		fmt.Print("Type " + bold("YES") + " to confirm: ")
 		input, _ := reader.ReadString('\n')
 		return strings.TrimSpace(input) == "YES"
 	case permissions.TierElevated.String():
 		fmt.Printf("\n%s\n   %s\n", yellow(bold("⚠  ELEVATED — requires elevated privileges:")), req.Command)
+		printDiffPreview(req)
 		fmt.Print("Allow? [y/N]: ")
 	default:
 		fmt.Printf("\n%s %s\n", cyan("▶"), req.Command)
+		printDiffPreview(req)
 		fmt.Print("Allow? [y/N]: ")
 	}
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(strings.ToLower(input))
 	return input == "y" || input == "yes"
+}
+
+// diffContextLines is how many unchanged lines of context to show around each
+// change in a confirmation diff preview.
+const diffContextLines = 3
+
+// printDiffPreview renders a unified diff of the proposed file change before the
+// y/N prompt, when the confirm request carries one. Output is colored only when
+// stdout is a terminal; piped output gets a plain, ANSI-free diff. A no-op edit
+// (identical content) produces no diff and prints nothing.
+func printDiffPreview(req protocol.ConfirmRequest) {
+	if !req.ShowDiff {
+		return
+	}
+	lines := computeDiff(req.OldContent, req.NewContent, diffContextLines)
+	out := renderDiff(lines, isTerminal(os.Stdout))
+	if out == "" {
+		return
+	}
+	fmt.Print(out)
 }

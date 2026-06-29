@@ -55,6 +55,14 @@ type ConfirmRequest struct {
 	Tier      string `json:"tier"`
 	Display   string `json:"display"`
 	Iteration int    `json:"iteration"`
+
+	// Diff preview fields, populated for file-editing tools (write_file,
+	// edit_file). When ShowDiff is true the confirmation UI renders a unified
+	// diff of OldContent → NewContent before the y/N prompt.
+	ShowDiff   bool   `json:"show_diff,omitempty"`
+	Path       string `json:"path,omitempty"`
+	OldContent string `json:"old_content,omitempty"`
+	NewContent string `json:"new_content,omitempty"`
 }
 
 // ConfirmResponse is sent from spai → spaid after the user decides.
