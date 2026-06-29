@@ -162,12 +162,23 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 
 			tier, display := classify(tc)
 			if mode == ModeManual && tier != permissions.TierPassthrough && tier != permissions.TierRead {
-				approved := a.confirmFn(protocol.ConfirmRequest{
+				creq := protocol.ConfirmRequest{
 					Command:   display,
 					Tier:      tier.String(),
 					Display:   tier.Display(),
 					Iteration: iter + 1,
-				})
+				}
+				// For file-editing tools, attach a preview of the change so the
+				// confirmation UI can show a diff before the y/N prompt. The
+				// content is computed without touching disk; the actual write
+				// only happens later via tool.Run after approval.
+				if path, oldC, newC, ok := tools.PreviewEdit(tc.Name, tc.Input); ok {
+					creq.ShowDiff = true
+					creq.Path = path
+					creq.OldContent = oldC
+					creq.NewContent = newC
+				}
+				approved := a.confirmFn(creq)
 				if !approved {
 					send(ctx, ch, protocol.Response{Type: "text", Content: "\nCancelled by user.\n"})
 					send(ctx, ch, protocol.Response{Type: "done"})
