@@ -15,6 +15,22 @@ type Config struct {
 	Permissions PermissionsConfig `toml:"permissions"`
 	Agent       AgentConfig       `toml:"agent"`
 	Spaish      SpaishConfig      `toml:"spaish"`
+	MCP         MCPConfig         `toml:"mcp"`
+}
+
+// MCPConfig declares external Model Context Protocol servers to connect to. Each
+// server is spawned over stdio; its tools are exposed to the model namespaced as
+// mcp__<name>__<tool>.
+type MCPConfig struct {
+	Servers []MCPServerConfig `toml:"servers"`
+}
+
+// MCPServerConfig describes a single MCP server launched as a subprocess.
+type MCPServerConfig struct {
+	Name    string   `toml:"name"`
+	Command string   `toml:"command"`
+	Args    []string `toml:"args"`
+	Env     []string `toml:"env"` // optional "KEY=VALUE" entries
 }
 
 type ProviderConfig struct {

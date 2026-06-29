@@ -311,7 +311,9 @@ func handleResumeCommand() {
 	showDisclaimer()
 	fmt.Printf("Resuming session %s\n", id)
 	cwd, _ := os.Getwd()
-	if err := cli.NewREPL(app.New(), id, cwd, gitBranch()).Run(); err != nil {
+	a := app.New()
+	defer a.Close()
+	if err := cli.NewREPL(a, id, cwd, gitBranch()).Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
@@ -408,7 +410,9 @@ func main() {
 		// No query → interactive REPL session.
 		showDisclaimer()
 		cwd, _ := os.Getwd()
-		if err := cli.NewREPL(app.New(), resolveSessionID(*sessionFlag), cwd, gitBranch()).Run(); err != nil {
+		a := app.New()
+		defer a.Close()
+		if err := cli.NewREPL(a, resolveSessionID(*sessionFlag), cwd, gitBranch()).Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
@@ -441,6 +445,7 @@ func main() {
 	}
 
 	a := app.New()
+	defer a.Close()
 	fmt.Println()
 	if err := cli.RunOneShot(context.Background(), a, req); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

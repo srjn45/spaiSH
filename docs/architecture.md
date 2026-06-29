@@ -12,7 +12,8 @@ cmd/spai ──▶ internal/app ──▶ internal/agent (tool-calling loop)
                  │                   │
                  │                   ├─▶ internal/ai        (providers: anthropic / openai / ollama)
                  │                   ├─▶ internal/tools     (bash, read/write/edit, glob, grep, list_dir)
-                 │                   └─▶ internal/permissions (parser-based command classifier)
+                 │                   ├─▶ internal/permissions (parser-based command classifier)
+                 │                   └─▶ internal/mcp       (external MCP servers over stdio)
                  ├─▶ internal/session  (file-backed history + auto-compaction)
                  └─▶ internal/llm      (Ollama model management)
 
@@ -80,6 +81,38 @@ Classification is static and offline — it runs even when no model is reachable
 
 ---
 
+## MCP tools — `internal/mcp`
+
+`spai` can connect to external [Model Context Protocol](https://modelcontextprotocol.io)
+servers and expose their tools to the model alongside the built-ins. Each
+configured server is spawned as a subprocess and spoken to over the **stdio
+transport** — newline-delimited JSON-RPC 2.0 on its stdin/stdout. The client is
+hand-rolled and minimal: it performs the `initialize` handshake, calls
+`tools/list`, and proxies `tools/call`.
+
+Each discovered tool is wrapped as a regular `tools.Tool` and namespaced
+`mcp__<server>__<tool>` (mirroring Claude Code) to avoid collisions. The bridged
+tools are appended to the built-in registry via `Registry.Add`, so they flow
+through the same tool-calling loop and confirmation flow. MCP tools are gated at
+**Write** tier — they require confirmation in manual mode.
+
+Loading is **resilient**: a server that fails to start, handshake, or list its
+tools is logged and skipped, never aborting startup — `spai` runs the same with
+zero or broken MCP servers. Servers are spawned once per session (lazily on the
+first agent run) and shut down via `App.Close` when the CLI exits.
+
+Configure servers with one `[[mcp.servers]]` block each:
+
+```toml
+[[mcp.servers]]
+name = "filesystem"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/some/dir"]
+# env = ["KEY=VALUE"]   # optional
+```
+
+---
+
 ## Sessions — `internal/session`
 
 Sessions are file-backed under `~/.local/share/spaish/sessions/<id>/`. Each turn
@@ -112,6 +145,14 @@ prefer_local = false               # always use the local model
 autonomous = false                 # default to auto mode
 max_iterations = 25
 verbose = false
+
+# External MCP servers (optional, repeatable). Tools are exposed as
+# mcp__<name>__<tool> and gated at Write tier.
+[[mcp.servers]]
+name = "filesystem"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/some/dir"]
+# env = ["KEY=VALUE"]
 ```
 
 ---
@@ -126,6 +167,7 @@ spaish/
 │   ├── agent/                # tool-calling loop
 │   ├── ai/                   # provider interface + anthropic/openai/ollama
 │   ├── tools/                # tool registry and implementations
+│   ├── mcp/                  # MCP stdio client + tool bridge
 │   ├── permissions/          # parser-based command classifier
 │   ├── cli/                  # one-shot renderer + REPL
 │   ├── session/              # file-backed sessions + auto-compaction
