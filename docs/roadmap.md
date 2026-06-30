@@ -23,13 +23,20 @@ The core agent is built and working:
 - [x] Streamed markdown rendering (glamour) in the renderer
 - [x] Shift-Tab mode cycling and Esc-to-interrupt key handling
 - [x] Prebuilt release binaries — tagged cross-compiled releases + CI
+- [x] Live `/model` provider/model switching inside the REPL
+- [x] Diff preview for `edit_file`/`write_file` before confirmation
+- [x] MCP tool integration — connect external MCP servers, bridge their tools
+- [x] More tools — `web_fetch`, `apply_patch` (structured patch/apply)
 
 ## Next
 
-- [ ] Live `/model` provider/model switching inside the REPL
-- [ ] Diff preview for `edit_file` before confirmation
-- [x] MCP tool integration
-- [ ] More tools (web fetch, structured patch/apply)
+The roadmap's original "Next" list is fully shipped. Candidate directions:
+
+- [ ] First tagged release (`v0.1.0`) — cut a tag and publish prebuilt binaries
+- [ ] Per-tool / per-MCP-server permission policy and allowlists
+- [ ] Streaming MCP tool discovery + `/mcp` status slash command
+- [ ] Cost/token usage reporting per session
+- [ ] `@`-completion for files and richer slash-command help
 
 ## Parked ideas
 
