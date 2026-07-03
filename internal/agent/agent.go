@@ -53,6 +53,16 @@ func New(provider ai.Provider, config Config, confirmFn ConfirmFunc) *Agent {
 
 // NewWithRegistry creates an Agent with an injected tool registry. Used in tests.
 func NewWithRegistry(provider ai.Provider, config Config, confirmFn ConfirmFunc, registry *tools.Registry) *Agent {
+	// Wire up the "delegate" (subagent) tool here rather than in
+	// tools.DefaultRegistry(): it needs a closure over the provider, the real
+	// confirmFn, and a child Config, none of which DefaultRegistry() can see.
+	// The runner (runDelegate) builds the nested Agent with a plain
+	// DefaultRegistry — which does NOT include this tool — so recursion depth
+	// can never exceed 1. Registry.Add is a no-op if "delegate" is already
+	// present, so this is safe to call unconditionally.
+	registry.Add(tools.NewDelegate(func(ctx context.Context, task string) (string, error) {
+		return runDelegate(ctx, provider, confirmFn, childConfig(config), task)
+	}))
 	return &Agent{provider: provider, config: config, confirmFn: confirmFn, registry: registry}
 }
 
@@ -276,6 +286,14 @@ func classify(tc ai.ToolCall) (permissions.Tier, string) {
 	case "read_image":
 		// Reading an image is a read, not a mutation: no confirmation gate.
 		return permissions.TierRead, tc.Name + " " + tools.PathArg(tc.Input)
+	case "delegate":
+		// Delegating a task spawns a whole nested agent loop — a meaningful,
+		// non-obvious action worth a top-level confirmation in manual mode, even
+		// though the nested loop independently re-gates each of its own
+		// sub-actions through this same confirmFn. TierWrite (not a stronger tier)
+		// because delegation itself performs no mutation: the sub-agent's actual
+		// Write/Destructive calls are each confirmed on their own merits.
+		return permissions.TierWrite, "delegate: " + tools.TaskArg(tc.Input)
 	default:
 		// MCP tools (mcp__<server>__<tool>) are external; gate them at Write
 		// tier so they require confirmation in manual mode.
