@@ -29,6 +29,22 @@ brew tap srjn45/spaish https://github.com/srjn45/spaiSH
 brew install spai
 ```
 
+### Linux packages (.deb / .rpm)
+
+Download the `.deb` or `.rpm` for your architecture from the latest
+[GitHub Release](https://github.com/srjn45/spaiSH/releases), then install:
+
+```bash
+# Debian / Ubuntu
+sudo dpkg -i spai_*.deb
+
+# Fedora / RHEL / openSUSE
+sudo rpm -i spai_*.rpm
+```
+
+Packages ship the `spai` binary at `/usr/bin/spai` along with shell completions
+and the man page.
+
 ### Script
 
 ```bash
