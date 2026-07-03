@@ -39,7 +39,7 @@ The core agent is built and working:
       call, with the existing diff-preview confirmation before writing
 - [ ] `code_exec` — sandboxed, ephemeral code execution (Python/Node) as a tool
       distinct from `bash`, with its own timeout/resource limits and tier
-- [ ] Vision input — let the agent read image files (screenshots, diagrams) and
+- [x] Vision input — let the agent read image files (screenshots, diagrams) and
       pass them through to vision-capable providers (Anthropic native first)
 - [ ] `todo` tool — an agent-visible task list for self-tracking progress on
       multi-step work, surfaced in the REPL renderer

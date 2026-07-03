@@ -54,12 +54,42 @@ func (p *OpenAIProvider) Complete(ctx context.Context, messages []Message) (<-ch
 	return streamToTextCh(ctx, p, messages)
 }
 
-// openAIMsg is the wire shape of a chat message.
+// openAIMsg is the wire shape of a chat message. Content is either a plain
+// string (text-only, the common case) or a []openAIContentPart array when the
+// message carries images — both are valid JSON for the OpenAI content field.
 type openAIMsg struct {
 	Role       string           `json:"role"`
-	Content    string           `json:"content,omitempty"`
+	Content    any              `json:"content,omitempty"`
 	ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string           `json:"tool_call_id,omitempty"`
+}
+
+// openAIContentPart is one item of a multi-part message content array, used to
+// mix text and images. Type is "text" or "image_url".
+type openAIContentPart struct {
+	Type     string          `json:"type"`
+	Text     string          `json:"text,omitempty"`
+	ImageURL *openAIImageURL `json:"image_url,omitempty"`
+}
+
+type openAIImageURL struct {
+	URL string `json:"url"` // base64 data URI: data:image/png;base64,...
+}
+
+// userContent returns the OpenAI content value for a user message: a plain
+// string when there are no images, or a text+image parts array otherwise.
+func userContent(text string, images []ImageContent) any {
+	if len(images) == 0 {
+		return text
+	}
+	var parts []openAIContentPart
+	if text != "" {
+		parts = append(parts, openAIContentPart{Type: "text", Text: text})
+	}
+	for _, img := range images {
+		parts = append(parts, openAIContentPart{Type: "image_url", ImageURL: &openAIImageURL{URL: img.DataURI()}})
+	}
+	return parts
 }
 
 type openAIToolCall struct {
@@ -220,12 +250,20 @@ func toOpenAIMessages(system string, messages []Message) []openAIMsg {
 			out = append(out, am)
 		default:
 			if len(m.ToolResults) > 0 {
+				// OpenAI tool messages must be plain strings, so any images a tool
+				// produced can't ride along on the tool message; collect them and
+				// forward them as a following user message the model can see.
+				var toolImages []ImageContent
 				for _, tr := range m.ToolResults {
 					out = append(out, openAIMsg{Role: "tool", ToolCallID: tr.ToolUseID, Content: tr.Content})
+					toolImages = append(toolImages, tr.Images...)
+				}
+				if len(toolImages) > 0 {
+					out = append(out, openAIMsg{Role: "user", Content: userContent("", toolImages)})
 				}
 			}
-			if m.Content != "" || len(m.ToolResults) == 0 {
-				out = append(out, openAIMsg{Role: "user", Content: m.Content})
+			if m.Content != "" || len(m.Images) > 0 || len(m.ToolResults) == 0 {
+				out = append(out, openAIMsg{Role: "user", Content: userContent(m.Content, m.Images)})
 			}
 		}
 	}

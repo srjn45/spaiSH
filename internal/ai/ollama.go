@@ -46,11 +46,27 @@ func (p *OllamaProvider) Complete(ctx context.Context, messages []Message) (<-ch
 	return streamToTextCh(ctx, p, messages)
 }
 
-// ollamaMsg is the wire shape of an Ollama chat message.
+// ollamaMsg is the wire shape of an Ollama chat message. Images is a list of
+// base64-encoded images (no data: prefix) for vision models; it is omitted for
+// text-only messages.
 type ollamaMsg struct {
 	Role      string           `json:"role"`
 	Content   string           `json:"content"`
 	ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
+	Images    []string         `json:"images,omitempty"`
+}
+
+// base64Images extracts the raw base64 payloads from images, the shape Ollama's
+// per-message "images" field expects.
+func base64Images(images []ImageContent) []string {
+	if len(images) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(images))
+	for _, img := range images {
+		out = append(out, img.Data)
+	}
+	return out
 }
 
 type ollamaToolCall struct {
@@ -253,12 +269,20 @@ func toOllamaMessages(system string, messages []Message) []ollamaMsg {
 			out = append(out, am)
 		default:
 			if len(m.ToolResults) > 0 {
+				// Ollama attaches images via a per-message "images" field rather
+				// than in tool messages, so forward any tool-produced images as a
+				// following user message the vision model can see.
+				var toolImages []ImageContent
 				for _, tr := range m.ToolResults {
 					out = append(out, ollamaMsg{Role: "tool", Content: tr.Content})
+					toolImages = append(toolImages, tr.Images...)
+				}
+				if len(toolImages) > 0 {
+					out = append(out, ollamaMsg{Role: "user", Images: base64Images(toolImages)})
 				}
 			}
-			if m.Content != "" || len(m.ToolResults) == 0 {
-				out = append(out, ollamaMsg{Role: "user", Content: m.Content})
+			if m.Content != "" || len(m.Images) > 0 || len(m.ToolResults) == 0 {
+				out = append(out, ollamaMsg{Role: "user", Content: m.Content, Images: base64Images(m.Images)})
 			}
 		}
 	}

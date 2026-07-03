@@ -8,12 +8,23 @@ import (
 
 // Message is a single turn in a conversation. Text-only callers use Role +
 // Content; tool-calling callers also populate ToolCalls (on assistant turns)
-// and ToolResults (on user turns).
+// and ToolResults (on user turns). Vision callers may attach Images to a user
+// turn; providers that lack vision support drop them (see each provider's
+// message converter).
 type Message struct {
-	Role        string       // "system", "user", "assistant"
-	Content     string       // text content
-	ToolCalls   []ToolCall   // assistant-initiated tool invocations
-	ToolResults []ToolResult // results fed back to the model
+	Role        string         // "system", "user", "assistant"
+	Content     string         // text content
+	ToolCalls   []ToolCall     // assistant-initiated tool invocations
+	ToolResults []ToolResult   // results fed back to the model
+	Images      []ImageContent `json:",omitempty"` // images attached to the turn (vision input)
+}
+
+// ImageContent is a single image carried alongside text to a vision-capable
+// provider. Data is standard base64 (no "data:" URI prefix); MediaType is an
+// IANA type such as "image/png". Build one with EncodeImageFile.
+type ImageContent struct {
+	MediaType string `json:"media_type"` // e.g. "image/png", "image/jpeg"
+	Data      string `json:"data"`       // base64-encoded image bytes
 }
 
 // ToolSpec describes a tool offered to the model.
@@ -30,11 +41,14 @@ type ToolCall struct {
 	Input json.RawMessage // raw JSON arguments
 }
 
-// ToolResult is the outcome of executing a ToolCall.
+// ToolResult is the outcome of executing a ToolCall. A tool that reads an image
+// (e.g. read_image) populates Images so the provider can forward the picture to
+// a vision-capable model on the next turn.
 type ToolResult struct {
 	ToolUseID string
 	Content   string
 	IsError   bool
+	Images    []ImageContent `json:",omitempty"` // images produced by the tool (vision input)
 }
 
 // Request is a tool-calling completion request.
