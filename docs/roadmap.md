@@ -33,8 +33,26 @@ The core agent is built and working:
 
 ## Next
 
-Every seeded "Next" item is now shipped — this section is intentionally empty
-until new directions are chosen.
+### Project context & subagents
+
+- [ ] `SPAI.md` project-instructions file — auto-discovered by walking up from
+      the working directory (like `.gitignore`/`.git` discovery), injected into
+      the system prompt alongside the existing static prompt in
+      `internal/agent/agent.go`. Missing file is a silent no-op.
+- [ ] `spai init`-style scaffold: a `/init` slash command that generates a
+      starter `SPAI.md` for the current repo (read a few files, propose a draft,
+      let the user confirm/edit before writing)
+- [ ] `agent` (subagent/delegate) tool — spawns a scoped, nested agent loop with
+      its own tool registry and message history, returns only a final summary
+      to the parent turn. Needs: a hard recursion-depth limit (subagents cannot
+      spawn subagents beyond depth 1), and its own max-iteration/timeout budget
+      independent of the parent's
+      so a nested loop can't silently exceed its own permission tier or read
+      outside its parent's scope
+- [ ] Per-project settings override — optional `.spai/settings.toml` (or a
+      `[project]` block discovered next to `SPAI.md`) for repo-local tool
+      allowlists/denylists, layered on top of (never replacing) the user's
+      global config in `internal/config`
 
 ## Recently completed
 
