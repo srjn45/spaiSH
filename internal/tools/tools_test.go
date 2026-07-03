@@ -119,13 +119,16 @@ func TestGlobAndGrep(t *testing.T) {
 func TestRegistrySpecs(t *testing.T) {
 	r := DefaultRegistry()
 	specs := r.Specs()
-	if len(specs) != 13 {
-		t.Errorf("expected 13 default tools, got %d", len(specs))
+	// Assert the baseline set is present rather than an exact count: several
+	// tools are added concurrently at this same registration point, so a
+	// hard-coded number is a needless merge hotspot.
+	if len(specs) < 13 {
+		t.Errorf("expected at least 13 default tools, got %d", len(specs))
 	}
 	if _, ok := r.Get("bash"); !ok {
 		t.Error("bash tool missing from default registry")
 	}
-	for _, name := range []string{"web_fetch", "apply_patch"} {
+	for _, name := range []string{"web_fetch", "apply_patch", "code_exec"} {
 		if _, ok := r.Get(name); !ok {
 			t.Errorf("%s tool missing from default registry", name)
 		}

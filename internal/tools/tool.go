@@ -57,6 +57,7 @@ func DefaultRegistry() *Registry {
 		&MultiEdit{},
 		&Git{},
 		&TodoWrite{},
+		&CodeExec{},
 	)
 }
 

@@ -257,6 +257,11 @@ func classify(tc ai.ToolCall) (permissions.Tier, string) {
 		return tools.GitTier(sub, args), display
 	case "todo_write":
 		return permissions.TierRead, "updating task list"
+	case "code_exec":
+		// Runs arbitrary Python/Node with the same OS privileges as bash and is
+		// not sandboxed, so it gets bash's worst-case tier — no easier ride just
+		// because it looks like a narrower tool.
+		return permissions.TierDestructive, tc.Name
 	default:
 		// MCP tools (mcp__<server>__<tool>) are external; gate them at Write
 		// tier so they require confirmation in manual mode.
