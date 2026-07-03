@@ -88,6 +88,9 @@ func (a *Agent) Run(ctx context.Context, req *protocol.AgentRequest, sess *sessi
 
 func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *session.Session, ch chan<- protocol.Response) {
 	system := systemPrompt + "\n\nWorking directory: " + a.config.WorkingDir
+	if spaiCtx := loadProjectContext(a.config.WorkingDir); spaiCtx != "" {
+		system += "\n\n## Project instructions (SPAI.md)\n" + spaiCtx
+	}
 	if a.config.GitBranch != "" {
 		system += "\nGit branch: " + a.config.GitBranch
 	}
