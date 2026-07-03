@@ -31,6 +31,7 @@ func completer() *readline.PrefixCompleter {
 		readline.PcItem("/clear"),
 		readline.PcItem("/compact"),
 		readline.PcItem("/history"),
+		readline.PcItem("/init"),
 		readline.PcItem("/quit"),
 		readline.PcItem("/exit"),
 	)
@@ -183,6 +184,9 @@ func (r *REPL) handleSlash(line string) bool {
 
 	case "/history":
 		r.printHistory()
+
+	case "/init":
+		r.handleInit()
 
 	default:
 		if s := suggestCommand(cmd); s != "" {
@@ -389,6 +393,7 @@ var commandDetails = map[string]string{
 	"/clear":   "wipe the session's conversation context, keeping the session open.",
 	"/compact": "summarise the conversation so far and compact it to reclaim context.",
 	"/history": "print the full transcript recorded for this session.",
+	"/init":    "scaffold a SPAI.md project-context file in the current working directory.",
 	"/quit":    "leave the session (aliases: /exit, /q; Ctrl+D also exits).",
 }
 
@@ -403,6 +408,7 @@ Commands:
   /clear             wipe the session's conversation context
   /compact           summarise and compact the session to reclaim context
   /history           print the session transcript
+  /init              scaffold a SPAI.md project-context file here
   /quit, /exit       leave the session
 
 References:
