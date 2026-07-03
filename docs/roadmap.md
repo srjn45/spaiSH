@@ -30,13 +30,14 @@ The core agent is built and working:
 
 ## Next
 
-The roadmap's original "Next" list is fully shipped. Candidate directions:
+Every seeded "Next" item is now shipped — this section is intentionally empty
+until new directions are chosen. Recently completed:
 
 - [x] First tagged release (`v0.1.0`) — cut a tag and publish prebuilt binaries
 - [x] Per-tool / per-MCP-server permission policy and allowlists
 - [x] Streaming MCP tool discovery + `/mcp` status slash command
 - [x] Cost/token usage reporting per session
-- [ ] `@`-completion for files and richer slash-command help
+- [x] `@`-completion for files and richer slash-command help
 
 ## Parked ideas
 
