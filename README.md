@@ -22,6 +22,15 @@ $ spai "nginx keeps returning 502, find and fix it"
 
 ## Install
 
+### Homebrew (macOS)
+
+```bash
+brew tap srjn45/spaish https://github.com/srjn45/spaiSH
+brew install spai
+```
+
+### Script
+
 ```bash
 git clone https://github.com/srjn45/spaiSH && cd spaiSH
 ./install.sh
