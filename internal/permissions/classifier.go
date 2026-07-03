@@ -94,7 +94,39 @@ var elevatedCmds = map[string]bool{
 // destructiveCmds are inherently dangerous and hard/impossible to undo.
 var destructiveCmds = map[string]bool{
 	"mkfs": true, "fdisk": true, "parted": true, "dd": true,
-	"shred": true, "wipefs": true, "mkswap": true,
+	"shred": true, "wipefs": true, "mkswap": true, "mke2fs": true,
+}
+
+// sudoValueFlags are sudo/doas/su options that consume the following argument.
+// Without skipping the value, the wrapped program is misidentified as the
+// flag's value (e.g. "sudo -u root rm -rf /" would treat "root" as the program
+// and never classify the rm). Only flags that unambiguously take a separate
+// value are listed; boolean flags like sudo's -s/-i must not appear here or a
+// real command token would be skipped.
+var sudoValueFlags = map[string]bool{
+	"-u": true, "--user": true,
+	"-g": true, "--group": true, "-G": true,
+	"-h": true, "--host": true,
+	"-p": true, "--prompt": true,
+	"-C": true, "--close-from": true,
+	"-r": true, "--role": true,
+	"-t": true, "--type": true,
+	"-T": true, "--command-timeout": true,
+	"-U": true, "--other-user": true,
+	"-R": true, "--chroot": true,
+	"-D": true, "--chdir": true,
+	"-a": true, // doas auth style
+	"-c": true, // su command string
+	"-w": true, // su whitelist-environment
+}
+
+// gitValueFlags are git global options (before the subcommand) that consume the
+// following argument, e.g. "git -C /repo clean -fd". Without skipping the value
+// the subcommand is misidentified as the path and dangerous subcommands slip
+// through as generic writes.
+var gitValueFlags = map[string]bool{
+	"-C": true, "-c": true,
+	"--git-dir": true, "--work-tree": true, "--namespace": true,
 }
 
 // Classify returns the permission tier for the given shell command. It parses
@@ -135,15 +167,17 @@ func classifyCall(call *syntax.CallExpr) Tier {
 	// sudo/doas/su: elevate, and also inspect the wrapped command.
 	if prog == "sudo" || prog == "doas" || prog == "su" {
 		inner := TierPassthrough
-		if len(args) > 0 {
-			// Skip sudo flags to find the wrapped program.
-			for i := 0; i < len(args); i++ {
-				if strings.HasPrefix(args[i], "-") {
-					continue
+		// Skip leading flags (and the values of value-taking flags) to find the
+		// wrapped program, then classify it with its own arguments.
+		for i := 0; i < len(args); i++ {
+			if strings.HasPrefix(args[i], "-") {
+				if sudoValueFlags[args[i]] {
+					i++ // also skip this flag's value
 				}
-				inner = classifyProg(baseName(args[i]), args[i+1:])
-				break
+				continue
 			}
+			inner = classifyProg(baseName(args[i]), args[i+1:])
+			break
 		}
 		return maxTier(TierElevated, inner)
 	}
@@ -157,12 +191,23 @@ func classifyProg(prog string, args []string) Tier {
 			return TierDestructive
 		}
 		return TierWrite
+	case prog == "find":
+		return classifyFind(args)
+	case prog == "tee":
+		for _, a := range args {
+			if isRawDiskDevice(a) {
+				return TierDestructive
+			}
+		}
+		return TierWrite
 	case prog == "git":
 		return classifyGit(args)
 	case prog == "docker":
 		return classifyDocker(args)
 	case prog == "systemctl":
 		return classifySystemctl(args)
+	case strings.HasPrefix(prog, "mkfs"): // mkfs, mkfs.ext4, mkfs.xfs, ...
+		return TierDestructive
 	case destructiveCmds[prog]:
 		return TierDestructive
 	case elevatedCmds[prog]:
@@ -184,8 +229,34 @@ func classifyProg(prog string, args []string) Tier {
 	}
 }
 
+// classifyFind classifies a find invocation. find itself only reads, but
+// -delete removes matched entries and -exec/-ok run an arbitrary command per
+// match, so those escalate to the tier of what they actually do.
+func classifyFind(args []string) Tier {
+	tier := TierRead
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-delete":
+			tier = maxTier(tier, TierDestructive)
+		case "-exec", "-execdir", "-ok", "-okdir":
+			// The executed command runs up to a ';' or '+' terminator.
+			cmd := args[i+1:]
+			for j, tok := range cmd {
+				if tok == ";" || tok == "+" {
+					cmd = cmd[:j]
+					break
+				}
+			}
+			if len(cmd) > 0 {
+				tier = maxTier(tier, classifyProg(baseName(cmd[0]), cmd[1:]))
+			}
+		}
+	}
+	return tier
+}
+
 func classifyGit(args []string) Tier {
-	sub := firstNonFlag(args)
+	sub := gitSubcommand(args)
 	switch sub {
 	case "log", "status", "diff", "show", "branch", "remote", "fetch", "ls-files", "blame":
 		return TierRead
@@ -235,9 +306,12 @@ func classifySystemctl(args []string) Tier {
 // string than the AST (device redirects, SQL DDL).
 func rawEscalations(command string) Tier {
 	lower := strings.ToLower(command)
-	if strings.Contains(lower, "/dev/sd") || strings.Contains(lower, "/dev/nvme") || strings.Contains(lower, "/dev/disk") {
-		if strings.Contains(command, ">") || strings.Contains(lower, "of=") {
-			return TierDestructive
+	for _, dev := range []string{"/dev/sd", "/dev/nvme", "/dev/disk", "/dev/hd", "/dev/vd", "/dev/mmcblk"} {
+		if strings.Contains(lower, dev) {
+			if strings.Contains(command, ">") || strings.Contains(lower, "of=") {
+				return TierDestructive
+			}
+			break
 		}
 	}
 	return TierPassthrough
@@ -295,6 +369,33 @@ func firstNonFlag(args []string) string {
 		}
 	}
 	return ""
+}
+
+// gitSubcommand returns the git subcommand, skipping global options and the
+// values of value-taking global options so the subcommand isn't confused with
+// an option value (e.g. "git -C /repo clean" -> "clean").
+func gitSubcommand(args []string) string {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if !strings.HasPrefix(a, "-") {
+			return a
+		}
+		if gitValueFlags[a] {
+			i++ // skip the option's value
+		}
+	}
+	return ""
+}
+
+// isRawDiskDevice reports whether path refers to a whole raw block device that
+// writing to would corrupt (e.g. /dev/sda, /dev/nvme0n1, /dev/disk0).
+func isRawDiskDevice(path string) bool {
+	return strings.HasPrefix(path, "/dev/sd") ||
+		strings.HasPrefix(path, "/dev/nvme") ||
+		strings.HasPrefix(path, "/dev/disk") ||
+		strings.HasPrefix(path, "/dev/hd") ||
+		strings.HasPrefix(path, "/dev/vd") ||
+		strings.HasPrefix(path, "/dev/mmcblk")
 }
 
 func contains(args []string, want string) bool {
