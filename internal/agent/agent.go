@@ -247,7 +247,7 @@ func classify(tc ai.ToolCall) (permissions.Tier, string) {
 		return permissions.Classify(cmd), cmd
 	case "http_request":
 		return permissions.TierElevated, "http_request " + tools.URLArg(tc.Input)
-	case "write_file", "edit_file":
+	case "write_file", "edit_file", "multi_edit":
 		return permissions.TierWrite, tc.Name + " " + tools.PathArg(tc.Input)
 	default:
 		// MCP tools (mcp__<server>__<tool>) are external; gate them at Write

@@ -54,6 +54,7 @@ func DefaultRegistry() *Registry {
 		&WebFetch{},
 		&ApplyPatch{},
 		&HTTPRequest{},
+		&MultiEdit{},
 	)
 }
 
