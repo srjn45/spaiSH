@@ -8,6 +8,7 @@ import (
 	"github.com/chzyer/readline"
 
 	"spaish/internal/agent"
+	"spaish/internal/mcp"
 	"spaish/internal/pricing"
 	"spaish/internal/protocol"
 	"spaish/internal/session"
@@ -21,6 +22,7 @@ func completer() *readline.PrefixCompleter {
 		readline.PcItem("/mode", readline.PcItem("manual"), readline.PcItem("auto"), readline.PcItem("plan")),
 		readline.PcItem("/model", readline.PcItem("anthropic"), readline.PcItem("openai"), readline.PcItem("ollama")),
 		readline.PcItem("/tools"),
+		readline.PcItem("/mcp"),
 		readline.PcItem("/cost"),
 		readline.PcItem("/clear"),
 		readline.PcItem("/compact"),
@@ -73,6 +75,9 @@ func (r *REPL) handleSlash(line string) bool {
 			fmt.Printf("  %s  %s\n", cyan(t.Name), dim(t.Description))
 		}
 
+	case "/mcp":
+		r.printMCP()
+
 	case "/cost":
 		r.printCost()
 
@@ -119,6 +124,34 @@ func (r *REPL) printModels() {
 		fmt.Printf("%s%s  %s\n", marker, cyan(label), dim("("+status+")"))
 	}
 	fmt.Println(dim("switch with: /model <provider> [model]  (e.g. /model ollama, /model openai:gpt-4o)"))
+}
+
+// printMCP triggers MCP server discovery and prints, per configured server, a
+// ✓/✗ marker, the server name, its tool count, and the namespaced tool names —
+// or the error for a server that failed to connect. The first call may block
+// briefly while servers handshake, so it prints a hint beforehand.
+func (r *REPL) printMCP() {
+	if r.app.MCPServerCount() == 0 {
+		fmt.Println(dim("no MCP servers configured (add [[mcp.servers]] in spaid.toml)"))
+		return
+	}
+	if !r.app.MCPLoaded() {
+		fmt.Println(dim("connecting to MCP servers…"))
+	}
+	for _, s := range r.app.MCPStatus() {
+		name := s.Name
+		if name == "" {
+			name = "(unnamed)"
+		}
+		if !s.OK {
+			fmt.Printf("%s %s  %s\n", red("✗"), bold(name), dim(s.Err))
+			continue
+		}
+		fmt.Printf("%s %s  %s\n", cyan("✓"), bold(name), dim(fmt.Sprintf("(%d tools)", len(s.Tools))))
+		for _, t := range s.Tools {
+			fmt.Printf("    %s\n", cyan(mcp.ToolName(s.Name, t)))
+		}
+	}
 }
 
 // printCost reports the active model, the estimated token footprint of the
@@ -173,6 +206,7 @@ Commands:
   /mode [m]          show or set execution mode (manual | auto | plan)
   /model [sel]       show providers, or switch (e.g. /model ollama, /model openai:gpt-4o)
   /tools             list available tools
+  /mcp               show MCP server connection status and discovered tools
   /cost              show estimated token usage and cost for this session
   /clear             wipe the session's conversation context
   /compact           summarise and compact the session

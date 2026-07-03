@@ -32,9 +32,9 @@ The core agent is built and working:
 
 The roadmap's original "Next" list is fully shipped. Candidate directions:
 
-- [ ] First tagged release (`v0.1.0`) — cut a tag and publish prebuilt binaries
+- [x] First tagged release (`v0.1.0`) — cut a tag and publish prebuilt binaries
 - [x] Per-tool / per-MCP-server permission policy and allowlists
-- [ ] Streaming MCP tool discovery + `/mcp` status slash command
+- [x] Streaming MCP tool discovery + `/mcp` status slash command
 - [x] Cost/token usage reporting per session
 - [ ] `@`-completion for files and richer slash-command help
 

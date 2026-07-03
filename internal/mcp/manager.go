@@ -13,7 +13,8 @@ const handshakeTimeout = 30 * time.Second
 
 // Manager owns the lifecycle of the connected MCP servers for a session.
 type Manager struct {
-	clients []*Client
+	clients  []*Client
+	statuses []ServerStatus
 }
 
 // Logf is a minimal logging hook so the manager can report skipped servers
@@ -35,35 +36,59 @@ func Load(ctx context.Context, servers []ServerConfig, logf Logf) (*Manager, []t
 	for _, cfg := range servers {
 		if cfg.Name == "" || cfg.Command == "" {
 			logf("mcp: skipping server with empty name or command")
+			m.statuses = append(m.statuses, ServerStatus{Name: cfg.Name, Err: "empty name or command"})
 			continue
 		}
 		c, err := Dial(ctx, cfg)
 		if err != nil {
 			logf("mcp: server %q failed to start: %v", cfg.Name, err)
+			m.statuses = append(m.statuses, ServerStatus{Name: cfg.Name, Err: err.Error()})
 			continue
 		}
 
-		hctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
-		if err := c.Initialize(hctx); err != nil {
-			cancel()
-			logf("mcp: server %q handshake failed: %v", cfg.Name, err)
-			_ = c.Close()
-			continue
-		}
-		infos, err := c.ListTools(hctx)
-		cancel()
-		if err != nil {
-			logf("mcp: server %q tools/list failed: %v", cfg.Name, err)
-			_ = c.Close()
-			continue
-		}
-
-		m.clients = append(m.clients, c)
-		bridged = append(bridged, toolsFor(c, infos)...)
-		logf("mcp: server %q ready (%d tools)", cfg.Name, len(infos))
+		st, toolz := m.discover(ctx, cfg.Name, c, logf)
+		m.statuses = append(m.statuses, st)
+		bridged = append(bridged, toolz...)
 	}
 
 	return m, bridged
+}
+
+// discover performs the handshake and tool listing for one already-dialed
+// client, returning its resolved status. On success the client is retained in
+// the manager and its tools are bridged; on any failure the status carries the
+// error, the client is closed, and no tools are returned. It never aborts the
+// caller's loop over the remaining servers.
+func (m *Manager) discover(ctx context.Context, name string, c *Client, logf Logf) (ServerStatus, []tools.Tool) {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	st := ServerStatus{Name: name}
+	hctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
+	defer cancel()
+
+	if err := c.Initialize(hctx); err != nil {
+		logf("mcp: server %q handshake failed: %v", name, err)
+		st.Err = err.Error()
+		_ = c.Close()
+		return st, nil
+	}
+	infos, err := c.ListTools(hctx)
+	if err != nil {
+		logf("mcp: server %q tools/list failed: %v", name, err)
+		st.Err = err.Error()
+		_ = c.Close()
+		return st, nil
+	}
+
+	m.clients = append(m.clients, c)
+	st.OK = true
+	st.Tools = make([]string, len(infos))
+	for i, info := range infos {
+		st.Tools[i] = info.Name
+	}
+	logf("mcp: server %q ready (%d tools)", name, len(infos))
+	return st, toolsFor(c, infos)
 }
 
 // Close shuts down every connected server. It is safe to call on a nil Manager.

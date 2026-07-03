@@ -51,6 +51,7 @@ type App struct {
 	mcpTools  []tools.Tool
 	mcpCtx    context.Context
 	mcpCancel context.CancelFunc
+	mcpLoaded bool
 }
 
 // Handler receives streamed responses from a running request.
@@ -376,6 +377,7 @@ func (a *App) toolRegistry() *tools.Registry {
 // skipped inside mcp.Load, so this never prevents the agent from running.
 func (a *App) ensureMCP() {
 	a.mcpOnce.Do(func() {
+		a.mcpLoaded = true
 		if len(a.cfg.MCP.Servers) == 0 {
 			return
 		}
@@ -391,6 +393,28 @@ func (a *App) ensureMCP() {
 		}
 		a.mcpMgr, a.mcpTools = mcp.Load(a.mcpCtx, servers, log.Printf)
 	})
+}
+
+// MCPServerCount reports how many MCP servers are configured, without spawning
+// them. The REPL uses it to decide whether /mcp has anything to discover.
+func (a *App) MCPServerCount() int {
+	return len(a.cfg.MCP.Servers)
+}
+
+// MCPLoaded reports whether the configured MCP servers have already been spawned
+// and discovered this session, so the REPL can show a "connecting…" hint only on
+// the first /mcp call.
+func (a *App) MCPLoaded() bool {
+	return a.mcpLoaded
+}
+
+// MCPStatus spawns the configured MCP servers on demand (once per session) and
+// returns the per-server discovery outcome: which connected, which failed and
+// why, and the tools each exposed. It returns an empty slice when no servers are
+// configured.
+func (a *App) MCPStatus() []mcp.ServerStatus {
+	a.ensureMCP()
+	return a.mcpMgr.Status()
 }
 
 // Close releases session-scoped resources, shutting down any spawned MCP
