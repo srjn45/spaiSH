@@ -53,6 +53,7 @@ func DefaultRegistry() *Registry {
 		&ListDir{},
 		&WebFetch{},
 		&ApplyPatch{},
+		&HTTPRequest{},
 	)
 }
 
@@ -111,6 +112,16 @@ func PathArg(input json.RawMessage) string {
 	}
 	_ = json.Unmarshal(input, &args)
 	return args.Path
+}
+
+// URLArg extracts the "url" field from a tool call input, for display in
+// the confirmation prompt. Returns "" when absent.
+func URLArg(input json.RawMessage) string {
+	var args struct {
+		URL string `json:"url"`
+	}
+	_ = json.Unmarshal(input, &args)
+	return args.URL
 }
 
 // tailTrim returns the last maxBytes bytes of s, prefixed with a notice when
