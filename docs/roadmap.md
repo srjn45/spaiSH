@@ -36,8 +36,20 @@ The core agent is built and working:
 
 ## Next
 
-Every seeded "Next" item is now shipped — this section is intentionally empty
-until new directions are chosen.
+### Distribution & polish
+
+- [ ] Shell completions — hand-written `completions/spai.{bash,zsh,fish}`
+      scripts covering `spai`'s subcommands/flags (`init`, `resume`, `llm`,
+      `--local`, `--autonomous`, `--dry-run`, `--legal`); `install.sh` installs
+      them to the right per-shell location
+- [ ] `man` page — `docs/spai.1`, installed by `install.sh` to
+      `~/.local/share/man/man1` (or `/usr/local/share/man/man1` for a
+      system-wide install)
+- [ ] Homebrew formula — `Formula/spai.rb` pointing at the existing tagged
+      release tarballs + checksums from `.github/workflows/release.yml`, with
+      README instructions for `brew tap srjn45/spaish` / `brew install spai`
+- [ ] `.deb`/`.rpm` packaging via `nfpm` in `release.yml`, bundling the binary
+      with the shell completions and man page once those exist
 
 ## Recently completed
 
