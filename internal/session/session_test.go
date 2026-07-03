@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -412,5 +413,36 @@ func TestLatestSessionID(t *testing.T) {
 	b.SaveCache()
 	if got := session.LatestSessionID(); got == "" {
 		t.Error("expected a latest session id")
+	}
+}
+
+// ---------- EstimateUsage ----------
+
+func TestEstimateUsage(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	s, _ := session.LoadByID("usage")
+	s.SetSummary(strings.Repeat("s", 40))                 // 40 chars → prompt
+	s.AddExchange(strings.Repeat("u", 80), strings.Repeat("a", 120)) // 80 prompt, 120 gen
+	s.Messages = append(s.Messages, ai.Message{
+		Role:        "assistant",
+		ToolCalls:   []ai.ToolCall{{Input: json.RawMessage(strings.Repeat("x", 40))}},
+		ToolResults: []ai.ToolResult{{Content: strings.Repeat("r", 20)}},
+	})
+
+	u := s.EstimateUsage()
+	// prompt: 40 (summary) + 80 (user) + 20 (tool result) = 140 → 35 tokens
+	if u.PromptTokens != 35 {
+		t.Errorf("PromptTokens = %d, want 35", u.PromptTokens)
+	}
+	// generated: 120 (assistant) + 40 (tool call) = 160 → 40 tokens
+	if u.GeneratedTokens != 40 {
+		t.Errorf("GeneratedTokens = %d, want 40", u.GeneratedTokens)
+	}
+	if u.TotalTokens() != 75 {
+		t.Errorf("TotalTokens = %d, want 75", u.TotalTokens())
+	}
+	// Total should track ApproxTokens (both use the same char basis).
+	if u.TotalTokens() != s.ApproxTokens() {
+		t.Errorf("TotalTokens %d != ApproxTokens %d", u.TotalTokens(), s.ApproxTokens())
 	}
 }
