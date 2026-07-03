@@ -51,6 +51,44 @@ sudo_session_timeout = 300
 	}
 }
 
+func TestLoadPermissionPolicy(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spaid.toml")
+	os.WriteFile(path, []byte(`
+[permissions]
+sudo_session_timeout = 300
+allow_commands = ["git status", "go test"]
+
+[permissions.tools]
+write_file = "deny"
+read_file = "allow"
+
+[permissions.mcp_servers]
+fs = "allow"
+git = "confirm"
+`), 0644)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Permissions.Tools["write_file"] != "deny" {
+		t.Errorf("tools.write_file = %q, want deny", cfg.Permissions.Tools["write_file"])
+	}
+	if cfg.Permissions.Tools["read_file"] != "allow" {
+		t.Errorf("tools.read_file = %q, want allow", cfg.Permissions.Tools["read_file"])
+	}
+	if cfg.Permissions.MCPServers["fs"] != "allow" {
+		t.Errorf("mcp_servers.fs = %q, want allow", cfg.Permissions.MCPServers["fs"])
+	}
+	if cfg.Permissions.MCPServers["git"] != "confirm" {
+		t.Errorf("mcp_servers.git = %q, want confirm", cfg.Permissions.MCPServers["git"])
+	}
+	if len(cfg.Permissions.AllowCommands) != 2 || cfg.Permissions.AllowCommands[0] != "git status" {
+		t.Errorf("allow_commands = %v, want [git status go test]", cfg.Permissions.AllowCommands)
+	}
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	_, err := config.Load("/nonexistent/path/spaid.toml")
 	if err == nil {
