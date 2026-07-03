@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -299,6 +300,161 @@ func TestAgentPlanModeDoesNotExecute(t *testing.T) {
 	}
 	if !strings.Contains(joinText(rs), "(plan)") {
 		t.Errorf("expected a plan line, got %q", joinText(rs))
+	}
+}
+
+// errProvider fails at Stream() setup time (e.g. auth/network error).
+type errProvider struct{ err error }
+
+func (p errProvider) Available() bool { return true }
+func (p errProvider) Name() string    { return "err" }
+func (p errProvider) Complete(_ context.Context, _ []ai.Message) (<-chan string, error) {
+	return nil, p.err
+}
+func (p errProvider) Stream(_ context.Context, _ ai.Request) (<-chan ai.Event, error) {
+	return nil, p.err
+}
+
+// errTool always fails when run.
+type errTool struct {
+	name string
+	err  error
+}
+
+func (t errTool) Name() string           { return t.name }
+func (t errTool) Description() string     { return "err" }
+func (t errTool) Schema() map[string]any  { return map[string]any{"type": "object"} }
+func (t errTool) Run(_ context.Context, _ json.RawMessage) (string, error) {
+	return "", t.err
+}
+
+// TestAgentNewUsesDefaultRegistry verifies the public constructor wires up a
+// usable agent (it builds the default tool registry rather than a nil one).
+func TestAgentNewUsesDefaultRegistry(t *testing.T) {
+	p := &scriptedProvider{turns: [][]ai.Event{{textEv("ok"), doneEv()}}}
+	a := agent.New(p, agent.Config{}, alwaysApprove)
+	if a == nil {
+		t.Fatal("agent.New returned nil")
+	}
+	// A no-tool run should complete cleanly through the default registry.
+	rs := collect(a.Run(context.Background(), &protocol.AgentRequest{Query: "hi"}, newSession(t)))
+	if !strings.Contains(joinText(rs), "ok") {
+		t.Errorf("expected agent built by New to run, got %q", joinText(rs))
+	}
+}
+
+// TestAgentProviderStreamErrorSurfaces verifies a provider setup error is
+// reported as an error response and the loop terminates with done.
+func TestAgentProviderStreamErrorSurfaces(t *testing.T) {
+	p := errProvider{err: errors.New("boom: no api key")}
+	rs := run(t, p, agent.Config{}, alwaysApprove, tools.NewRegistry(), "hi")
+	var sawErr, sawDone bool
+	for _, r := range rs {
+		if r.Type == "error" && strings.Contains(r.Content, "boom: no api key") {
+			sawErr = true
+		}
+		if r.Type == "done" {
+			sawDone = true
+		}
+	}
+	if !sawErr {
+		t.Errorf("expected AI error response, got %+v", rs)
+	}
+	if !sawDone {
+		t.Errorf("expected done after error, got %+v", rs)
+	}
+}
+
+// TestAgentMidStreamErrorSurfaces verifies an error event emitted mid-stream is
+// forwarded and stops the loop.
+func TestAgentMidStreamErrorSurfaces(t *testing.T) {
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{textEv("thinking..."), {Type: "error", Err: "provider exploded mid-stream"}},
+	}}
+	rs := run(t, p, agent.Config{}, alwaysApprove, tools.NewRegistry(), "hi")
+	var sawErr bool
+	for _, r := range rs {
+		if r.Type == "error" && strings.Contains(r.Content, "exploded mid-stream") {
+			sawErr = true
+		}
+	}
+	if !sawErr {
+		t.Errorf("expected mid-stream error to surface, got %+v", rs)
+	}
+}
+
+// TestAgentToolErrorReportedAndContinues verifies a tool that returns an error
+// yields an error tool-result and lets the model recover on the next turn.
+func TestAgentToolErrorReportedAndContinues(t *testing.T) {
+	reg := tools.NewRegistry(errTool{name: "bash", err: errors.New("exit status 1: file not found")})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "bash", `{"command":"cat missing"}`), doneEv()},
+		{textEv("recovered from failure"), doneEv()},
+	}}
+	rs := run(t, p, agent.Config{Autonomous: true}, alwaysApprove, reg, "read a file")
+	out := joinText(rs)
+	if !strings.Contains(out, "file not found") {
+		t.Errorf("expected tool error to be reported, got %q", out)
+	}
+	if !strings.Contains(out, "recovered from failure") {
+		t.Errorf("expected loop to continue after tool error, got %q", out)
+	}
+	// The failing tool result must be marked as an error message to the model.
+	last := p.lastReq.Messages
+	var foundErrResult bool
+	for _, m := range last {
+		for _, tr := range m.ToolResults {
+			if tr.IsError && strings.Contains(tr.Content, "file not found") {
+				foundErrResult = true
+			}
+		}
+	}
+	if !foundErrResult {
+		t.Errorf("expected an IsError tool result carrying the error, messages=%+v", last)
+	}
+}
+
+// TestAgentVerboseEmitsTierLineAndOutput verifies verbose mode prints the tier
+// banner and the tool output even on success.
+func TestAgentVerboseEmitsTierLineAndOutput(t *testing.T) {
+	reg := tools.NewRegistry(fakeTool{name: "read_file", out: "file contents here"})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "read_file", `{"path":"x"}`), doneEv()},
+		{textEv("done"), doneEv()},
+	}}
+	rs := run(t, p, agent.Config{Verbose: true}, alwaysApprove, reg, "read")
+	out := joinText(rs)
+	if !strings.Contains(out, "[Read]") {
+		t.Errorf("expected verbose tier banner, got %q", out)
+	}
+	if !strings.Contains(out, "file contents here") {
+		t.Errorf("expected verbose tool output, got %q", out)
+	}
+}
+
+// TestAgentGitBranchInSystemPrompt verifies the configured git branch is
+// injected into the system prompt sent to the provider.
+func TestAgentGitBranchInSystemPrompt(t *testing.T) {
+	p := &scriptedProvider{turns: [][]ai.Event{{textEv("ok"), doneEv()}}}
+	a := agent.NewWithRegistry(p, agent.Config{GitBranch: "feature/xyz"}, alwaysApprove, tools.NewRegistry())
+	collect(a.Run(context.Background(), &protocol.AgentRequest{Query: "hi"}, newSession(t)))
+	if !strings.Contains(p.lastReq.System, "feature/xyz") {
+		t.Errorf("expected git branch in system prompt, got %q", p.lastReq.System)
+	}
+}
+
+// TestAgentReadToolRunsSilentlyInManualMode verifies a Read-tier tool executes
+// without confirmation even in manual mode (confirmFn would deny).
+func TestAgentReadToolRunsSilentlyInManualMode(t *testing.T) {
+	calls := 0
+	reg := tools.NewRegistry(fakeTool{name: "grep", out: "match", calls: &calls})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "grep", `{"pattern":"x"}`), doneEv()},
+		{textEv("done"), doneEv()},
+	}}
+	run(t, p, agent.Config{}, alwaysDeny, reg, "search")
+	if calls != 1 {
+		t.Errorf("read-tier tool should run without confirm, ran %d times", calls)
 	}
 }
 
