@@ -74,10 +74,11 @@ func New() *App {
 		cfg = &config.Config{}
 	}
 
+	// LoadState always returns a usable state; on error it is the default
+	// state, so we log and continue rather than retrying the same failing read.
 	llmState, err := llm.LoadState(llm.DefaultStatePath())
 	if err != nil {
 		log.Printf("llm state load warning: %v — using defaults", err)
-		llmState, _ = llm.LoadState(llm.DefaultStatePath())
 	}
 	llmMgr := llm.NewManager(llmState)
 

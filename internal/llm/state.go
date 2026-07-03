@@ -50,7 +50,10 @@ func LoadState(path string) (*State, error) {
 		return s, nil
 	}
 	if err != nil {
-		return nil, err
+		// Unreadable for a real reason (e.g. permission denied, path is a
+		// directory): return the usable default state alongside the error so
+		// callers get a working state and can log a warning rather than crash.
+		return s, err
 	}
 	if err := json.Unmarshal(data, s); err != nil {
 		// Corrupted — return a fresh default state without error

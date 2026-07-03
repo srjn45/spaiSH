@@ -63,6 +63,26 @@ func TestLoadStateFilePermissions(t *testing.T) {
 	}
 }
 
+// TestLoadStateUnreadableReturnsDefault verifies that a hard read error (here,
+// the state "file" is actually a directory) still yields a usable default state
+// alongside the error, so callers never get a nil state to dereference.
+func TestLoadStateUnreadableReturnsDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state-as-dir")
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s, err := llm.LoadState(path)
+	if err == nil {
+		t.Fatal("expected an error reading a directory as state, got nil")
+	}
+	if s == nil {
+		t.Fatal("expected a non-nil default state even on read error")
+	}
+	if s.ActiveRuntime != "ollama" || s.ActiveModel == "" {
+		t.Errorf("expected default state fields, got runtime=%q model=%q", s.ActiveRuntime, s.ActiveModel)
+	}
+}
+
 func TestLoadStateCorrupted(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "llm-state.json")
 	os.WriteFile(path, []byte("not valid json {{{{"), 0600)
