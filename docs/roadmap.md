@@ -30,26 +30,14 @@ The core agent is built and working:
 - [x] Expanded tool surface — `git`, `multi_edit`, `code_exec`, vision input,
       `todo_write`, `http_request`
 - [x] Test-coverage and permission-classifier hardening pass
+- [x] Project context & subagents — `SPAI.md` project-instructions file,
+      `/init` scaffold command, `delegate` (subagent) tool with a hard depth-1
+      limit, and per-project `.spai/settings.toml` permission overrides
 
 ## Next
 
-### Project context & subagents
-
-- [x] `SPAI.md` project-instructions file — auto-discovered by walking up from
-      the working directory, stopping at the `.git` boundary, injected into the
-      system prompt. Missing file is a silent no-op.
-- [ ] `spai init`-style scaffold: a `/init` slash command that generates a
-      starter `SPAI.md` for the current repo (read a few files, propose a draft,
-      let the user confirm/edit before writing)
-- [x] `delegate` (subagent) tool — spawns a scoped, nested agent loop with its
-      own tool registry, returns only a final summary to the parent turn. Hard
-      recursion depth limit of 1, a strictly smaller iteration budget than the
-      parent, and reuses the parent's real confirmation gate for nested
-      Write/Elevated/Destructive calls
-- [ ] Per-project settings override — optional `.spai/settings.toml` (or a
-      `[project]` block discovered next to `SPAI.md`) for repo-local tool
-      allowlists/denylists, layered on top of (never replacing) the user's
-      global config in `internal/config`
+Every seeded "Next" item is now shipped — this section is intentionally empty
+until new directions are chosen.
 
 ## Recently completed
 
@@ -64,6 +52,13 @@ The core agent is built and working:
 - [x] Vision input — image files passed through to vision-capable providers
 - [x] `todo_write` — in-session task list surfaced in the REPL
 - [x] `http_request` — generic REST tool (method/headers/body)
+- [x] `SPAI.md` — auto-discovered project-instructions file injected into the
+      system prompt
+- [x] `/init` — REPL slash command that scaffolds a starter `SPAI.md`
+- [x] `delegate` — nested subagent tool, depth-limited to 1, sharing the
+      parent's confirmation gate
+- [x] Per-project `.spai/settings.toml` permission overrides, layered over
+      global config
 
 ## Parked ideas
 
