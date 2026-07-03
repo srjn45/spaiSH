@@ -25,6 +25,38 @@ prefer_local = false
 # Seconds before an elevated (sudo) approval expires and must be re-confirmed.
 sudo_session_timeout = 300
 
+# Configurable policy layer, resolved before the built-in tier-based confirm
+# gate. Everything below is optional — an empty [permissions] section reproduces
+# the default behavior exactly. Each policy value is one of:
+#   allow   — run without confirmation, even in manual mode
+#   confirm — keep the default tier-based behavior (and, as an explicit entry,
+#             override a broader "allow", e.g. a per-server allow)
+#   deny    — never execute, in any mode (auto included); the tool call is
+#             reported back to the model as an error and the loop continues
+#
+# Resolution precedence, highest first:
+#   1. per-tool entry ([permissions.tools])
+#   2. per-MCP-server entry ([permissions.mcp_servers], for mcp__<server>__* tools)
+#   3. bash allow_commands prefix match (for the bash tool)
+#   4. default tier-based behavior
+#
+# Bash command prefixes that bypass confirmation when the classified command
+# matches on a word boundary (e.g. "git status" matches "git status -s").
+# allow_commands = ["git status", "git diff", "go test", "go build"]
+#
+# Per-tool policy: tool name -> allow | confirm | deny.
+# [permissions.tools]
+# read_file = "allow"
+# write_file = "confirm"
+# bash = "confirm"
+#
+# Per-MCP-server policy: server name (the <server> in mcp__<server>__<tool>) ->
+# allow | confirm | deny. Applies to all of that server's tools; an explicit
+# [permissions.tools] entry for a specific mcp__* tool wins over this default.
+# [permissions.mcp_servers]
+# filesystem = "allow"
+# git = "confirm"
+
 [agent]
 # Default to auto mode (run tool calls without confirmation).
 autonomous = false

@@ -8,6 +8,7 @@ import (
 
 	"spaish/internal/agent"
 	"spaish/internal/ai"
+	"spaish/internal/permissions"
 	"spaish/internal/protocol"
 	"spaish/internal/session"
 	"spaish/internal/tools"
@@ -169,6 +170,96 @@ func TestAgentMCPToolIsGated(t *testing.T) {
 	}
 	if !strings.Contains(joinText(rs), "Cancelled by user") {
 		t.Errorf("expected MCP tool to be gated, got %q", joinText(rs))
+	}
+}
+
+// TestAgentPolicyAllowBypassesConfirm verifies an "allow" policy runs a
+// Write-tier tool in manual mode without prompting (confirmFn always denies).
+func TestAgentPolicyAllowBypassesConfirm(t *testing.T) {
+	calls := 0
+	reg := tools.NewRegistry(fakeTool{name: "write_file", out: "wrote", calls: &calls})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "write_file", `{"path":"x"}`), doneEv()},
+		{textEv("done"), doneEv()},
+	}}
+	cfg := agent.Config{Policy: permissions.NewPolicy(map[string]string{"write_file": "allow"}, nil, nil)}
+	run(t, p, cfg, alwaysDeny, reg, "write a file")
+	if calls != 1 {
+		t.Errorf("allow policy should run write_file once despite deny confirm, ran %d times", calls)
+	}
+}
+
+// TestAgentPolicyDenyBlocksAndContinues verifies a "deny" policy blocks the
+// tool, emits a blocked result, and lets the loop continue (does not abort).
+func TestAgentPolicyDenyBlocksAndContinues(t *testing.T) {
+	calls := 0
+	reg := tools.NewRegistry(fakeTool{name: "bash", out: "ok", calls: &calls})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "bash", `{"command":"rm -rf /tmp/x"}`), doneEv()},
+		{textEv("recovered"), doneEv()},
+	}}
+	cfg := agent.Config{Policy: permissions.NewPolicy(map[string]string{"bash": "deny"}, nil, nil)}
+	rs := run(t, p, cfg, alwaysApprove, reg, "delete stuff")
+	if calls != 0 {
+		t.Errorf("denied tool should not run, ran %d times", calls)
+	}
+	out := joinText(rs)
+	if !strings.Contains(out, "blocked by permission policy") {
+		t.Errorf("expected blocked message, got %q", out)
+	}
+	if !strings.Contains(out, "recovered") {
+		t.Errorf("expected loop to continue after deny, got %q", out)
+	}
+}
+
+// TestAgentPolicyDenyEnforcedInAutoMode verifies deny blocks even in auto mode,
+// where confirmation is otherwise skipped entirely.
+func TestAgentPolicyDenyEnforcedInAutoMode(t *testing.T) {
+	calls := 0
+	reg := tools.NewRegistry(fakeTool{name: "bash", out: "ok", calls: &calls})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "bash", `{"command":"rm -rf /tmp/x"}`), doneEv()},
+		{textEv("done"), doneEv()},
+	}}
+	cfg := agent.Config{Autonomous: true, Policy: permissions.NewPolicy(map[string]string{"bash": "deny"}, nil, nil)}
+	rs := run(t, p, cfg, alwaysApprove, reg, "delete stuff")
+	if calls != 0 {
+		t.Errorf("deny must be enforced in auto mode, ran %d times", calls)
+	}
+	if !strings.Contains(joinText(rs), "blocked by permission policy") {
+		t.Errorf("expected blocked message in auto mode, got %q", joinText(rs))
+	}
+}
+
+// TestAgentBashAllowlistBypassesConfirm verifies an allowlisted bash prefix runs
+// without prompting in manual mode even though bash is Write-tier or higher.
+func TestAgentBashAllowlistBypassesConfirm(t *testing.T) {
+	calls := 0
+	reg := tools.NewRegistry(fakeTool{name: "bash", out: "M file.go", calls: &calls})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "bash", `{"command":"git status -s"}`), doneEv()},
+		{textEv("done"), doneEv()},
+	}}
+	cfg := agent.Config{Policy: permissions.NewPolicy(nil, nil, []string{"git status"})}
+	run(t, p, cfg, alwaysDeny, reg, "check status")
+	if calls != 1 {
+		t.Errorf("allowlisted command should run once despite deny confirm, ran %d times", calls)
+	}
+}
+
+// TestAgentMCPServerAllowBypassesConfirm verifies a per-server "allow" policy
+// runs an mcp__<server>__* tool without prompting in manual mode.
+func TestAgentMCPServerAllowBypassesConfirm(t *testing.T) {
+	calls := 0
+	reg := tools.NewRegistry(fakeTool{name: "mcp__fs__read", out: "data", calls: &calls})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "mcp__fs__read", `{}`), doneEv()},
+		{textEv("done"), doneEv()},
+	}}
+	cfg := agent.Config{Policy: permissions.NewPolicy(nil, map[string]string{"fs": "allow"}, nil)}
+	run(t, p, cfg, alwaysDeny, reg, "use mcp tool")
+	if calls != 1 {
+		t.Errorf("server-allowed MCP tool should run once despite deny confirm, ran %d times", calls)
 	}
 }
 

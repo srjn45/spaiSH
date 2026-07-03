@@ -28,6 +28,11 @@ type Config struct {
 	WorkingDir    string
 	GitBranch     string
 	Stdin         string // content from piped stdin; injected before the query
+
+	// Policy is the configurable per-tool / per-MCP-server / bash-allowlist
+	// gating layer consulted before the tier-based confirm gate. The zero value
+	// is an empty policy, so leaving it unset preserves the legacy behavior.
+	Policy permissions.Policy
 }
 
 // ConfirmFunc is called when a tier-gated tool call needs user approval.
@@ -161,7 +166,28 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 			}
 
 			tier, display := classify(tc)
-			if mode == ModeManual && tier != permissions.TierPassthrough && tier != permissions.TierRead {
+
+			// Consult the configurable policy before the tier-based gate. A
+			// bash command is passed so the allowlist can match on it.
+			var bashCmd string
+			if tc.Name == "bash" {
+				bashCmd = tools.Command(tc.Input)
+			}
+			decision := a.config.Policy.Decide(tc.Name, bashCmd)
+			if decision == permissions.DecisionDeny {
+				// Blocked in every mode: never execute, report an error result,
+				// and continue the loop so the model can adapt.
+				content := "blocked by permission policy: " + tc.Name
+				results = append(results, ai.ToolResult{ToolUseID: tc.ID, Content: content, IsError: true})
+				send(ctx, ch, protocol.Response{Type: "output", Content: content + "\n"})
+				continue
+			}
+
+			// allow bypasses confirmation entirely; confirm/default fall through
+			// to the existing tier-based gate.
+			needConfirm := decision != permissions.DecisionAllow &&
+				mode == ModeManual && tier != permissions.TierPassthrough && tier != permissions.TierRead
+			if needConfirm {
 				creq := protocol.ConfirmRequest{
 					Command:   display,
 					Tier:      tier.String(),

@@ -19,6 +19,7 @@ import (
 	"spaish/internal/config"
 	"spaish/internal/llm"
 	"spaish/internal/mcp"
+	"spaish/internal/permissions"
 	"spaish/internal/protocol"
 	"spaish/internal/session"
 	"spaish/internal/tools"
@@ -332,6 +333,11 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 		WorkingDir:    req.WorkingDir,
 		GitBranch:     req.GitBranch,
 		Stdin:         req.Stdin,
+		Policy: permissions.NewPolicy(
+			a.cfg.Permissions.Tools,
+			a.cfg.Permissions.MCPServers,
+			a.cfg.Permissions.AllowCommands,
+		),
 	}
 
 	ag := agent.NewWithRegistry(provider, agentCfg, confirmFn, a.toolRegistry())

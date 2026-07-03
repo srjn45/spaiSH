@@ -52,6 +52,20 @@ type RoutingConfig struct {
 
 type PermissionsConfig struct {
 	SudoSessionTimeout int `toml:"sudo_session_timeout"`
+
+	// Tools maps a tool name to a policy: "allow" | "confirm" | "deny".
+	// "allow" runs it without confirmation; "deny" blocks it in every mode;
+	// "confirm" (or an absent entry) keeps the default tier-based behavior.
+	Tools map[string]string `toml:"tools"`
+
+	// MCPServers maps an MCP server name (the <server> in mcp__<server>__<tool>)
+	// to a policy applied to all of that server's tools. An explicit Tools entry
+	// for a specific mcp__* tool wins over the server default.
+	MCPServers map[string]string `toml:"mcp_servers"`
+
+	// AllowCommands lists bash command prefixes (e.g. "git status", "go test")
+	// that bypass confirmation when the classified bash command matches.
+	AllowCommands []string `toml:"allow_commands"`
 }
 
 type AgentConfig struct {
