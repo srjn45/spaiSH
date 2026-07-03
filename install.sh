@@ -147,6 +147,28 @@ case ":$PATH:" in
   *) echo "  → Note: $INSTALL_DIR is not on your PATH — add it to use \`spai\` directly." ;;
 esac
 
+# Install man page (best-effort) -----------------------------------------------
+MAN_DIR="${MAN_DIR:-$HOME/.local/share/man/man1}"
+
+install_man_page() {
+  src="$REPO_DIR/docs/spai.1"
+  if [ ! -f "$src" ]; then
+    echo "  → Man page not found at $src — skipping"
+    return 0
+  fi
+  if ! mkdir -p "$MAN_DIR" 2>/dev/null; then
+    echo "  → Could not create $MAN_DIR — skipping man page install"
+    return 0
+  fi
+  if cp "$src" "$MAN_DIR/spai.1" 2>/dev/null; then
+    echo "  → Installed man page → $MAN_DIR/spai.1"
+  else
+    echo "  → Could not install man page — skipping"
+  fi
+}
+
+install_man_page
+
 echo ""
 echo "Installed spai → $INSTALL_DIR/spai"
 echo ""

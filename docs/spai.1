@@ -1,0 +1,435 @@
+.TH SPAI 1 "2026" "spaiSH" "User Commands"
+.SH NAME
+spai \- AI agent for your terminal
+.SH SYNOPSIS
+.B spai
+[\fIFLAGS\fR] [\fIQUERY\fR]
+.br
+.B spai
+.I SUBCOMMAND
+[\fIARGS\fR]
+.SH DESCRIPTION
+.B spai
+is a Claude-Code-style AI agent that works in your terminal.
+Give it a task in plain language; it reads files, runs commands, and edits
+code on your behalf.
+Every action that changes your system is shown before execution and requires
+your confirmation.
+.PP
+.B spai
+works with remote models (Anthropic Claude or any OpenAI-compatible API) and
+local models (Ollama).
+It is a single statically-linked binary with no daemon.
+.PP
+Run
+.B spai
+with no arguments to start an interactive multi-turn REPL session.
+Supply a query as positional arguments for a one-shot request.
+.SH OPTIONS
+.TP
+.B \-\-autonomous
+Run all tool calls without confirmation prompts.
+Equivalent to
+.B /mode auto
+inside the REPL.
+.TP
+.B \-\-dry\-run
+Propose a plan of tool calls but never execute any of them.
+Equivalent to
+.B /mode plan
+inside the REPL.
+.TP
+.B \-\-local
+Force the local inference backend (Ollama) for this request, ignoring the
+configured remote provider.
+.TP
+.B \-\-verbose
+Show full command output and iteration details while the agent loop runs.
+.TP
+.B \-\-session \fIID\fR
+Name the session explicitly.
+Falls back to
+.B $SPAI_SESSION_ID
+and then to the pinned session (see
+.BR "spai sessions" ),
+and finally to the literal string \fIdefault\fR.
+.TP
+.B \-\-legal
+Print the legal disclaimer and license notice, then exit.
+.TP
+.B \-\-version
+Print the build version string and exit.
+.SH SUBCOMMANDS
+.TP
+.B init
+.TQ
+.B setup
+Run the first-run setup wizard.
+Choose a provider (Anthropic, an OpenAI-compatible endpoint, or Ollama), set
+the model, and run a live connection test.
+The wizard writes configuration to
+.IR ~/.config/spaish/spaid.toml .
+.TP
+.B resume
+Reopen the most recently used session in the interactive REPL.
+.TP
+.B sessions
+With no arguments, list all sessions with message counts and ages.
+.br
+.B spai sessions \fIID\fR
+\(em create the session if it does not exist and pin it so future invocations
+use it.
+.br
+.B spai sessions \-\-reset
+\(em clear the pinned session, reverting to
+.B $SPAI_SESSION_ID
+or
+.IR default .
+.TP
+.B history [\-\-session \fIID\fR]
+Browse the session transcript in
+.BR less (1)
+(or
+.BR more (1)
+if
+.B less
+is not available).
+.TP
+.B clear [\-\-lines \fIN\fR] [\-\-session \fIID\fR]
+Wipe the session's conversation context.
+With
+.B \-\-lines \fIN\fR,
+keep only the last \fIN\fR messages.
+.TP
+.B compact [\-\-session \fIID\fR]
+Ask the model to summarise and compact the session history to reclaim context
+window space.
+.TP
+.B rebuild-context [\-\-session \fIID\fR]
+Rebuild the AI context from the raw history stored on disk.
+.TP
+.B llm \fICOMMAND\fR [\fIARGS\fR]
+Manage local model runtimes and models.
+Run
+.B spai llm help
+for the full subcommand list.
+Sub-commands include:
+.RS
+.TP
+.B status
+Show the active runtime and model.
+.TP
+.B install [\fIruntime\fR]
+Install a local runtime.
+Supported runtimes:
+.B ollama
+(default),
+.BR bitnet .
+.TP
+.B use\-runtime \fIruntime\fR
+Switch the active runtime.
+.TP
+.B list
+List installed and recommended local models.
+.TP
+.B pull \fImodel\fR
+Download a model (e.g.\&
+.IR qwen2.5-coder:7b ).
+.TP
+.B remove \fImodel\fR
+Delete a model from local storage.
+.TP
+.B use \fImodel\fR
+Set the active model for local inference.
+.RE
+.SH SPECIAL SYNTAX
+.TP
+.B spai !!
+Equivalent to asking
+.I "My last command failed. What went wrong and how do I fix it?"
+The shell expands
+.B !!
+to the previous command before
+.B spai
+sees it only if your shell history expansion is enabled; otherwise pass the
+literal string.
+.TP
+.B "command | spai \fIQUERY\fR"
+Pipe up to 64 KB of stdin into the query as additional context.
+.SH INTERACTIVE REPL
+Running
+.B spai
+with no arguments (or
+.BR "spai resume" )
+starts an interactive session with a readline prompt.
+.SS Slash commands
+.TP
+.B /help [\fIcommand\fR]
+Show the command list, or detailed help for one command.
+.TP
+.B /mode [\fBmanual\fR|\fBauto\fR|\fBplan\fR]
+Show the current execution mode, or set it.
+.br
+.B manual
+(default) \(em write, elevated, and destructive actions ask for confirmation.
+.br
+.B auto
+\(em run all tool calls without prompting.
+.br
+.B plan
+\(em propose tool calls but never execute them.
+.TP
+.B /model [\fIprovider\fR[:\fImodel\fR]]
+Show configured providers and models, or switch the active one.
+Examples:
+.B /model ollama
+,
+.B /model openai:gpt-4o
+,
+.B /model anthropic
+.
+.TP
+.B /tools
+List the tools available to the agent in this session.
+.TP
+.B /mcp
+Connect to configured MCP servers and show their status and discovered tools.
+.TP
+.B /cost
+Show estimated token usage and dollar cost for the session.
+.TP
+.B /clear
+Wipe the session's conversation context while keeping the session open.
+.TP
+.B /compact
+Summarise the conversation and compact it to reclaim context window space.
+.TP
+.B /history
+Print the full transcript recorded for this session.
+.TP
+.B /init
+Scaffold a
+.I SPAI.md
+project-context file in the current working directory.
+.TP
+.B /quit
+.TQ
+.B /exit
+.TQ
+.B /q
+Leave the session.
+.SS File references
+Type
+.B @path
+anywhere in a message to include that file's contents in the prompt.
+Press
+.B Tab
+after
+.B @
+to complete file and directory names; a trailing
+.B /
+marks a directory you can descend into.
+.SS Key bindings
+.TP
+.B Tab
+Complete slash commands (at line start) and
+.B @path
+references (anywhere).
+.TP
+.B Shift-Tab
+Cycle the execution mode: manual \(-> auto \(-> plan.
+.TP
+.B Esc / Ctrl-C
+Cancel the current agent turn.
+.TP
+.B Ctrl-D
+Exit the session.
+.SH EXECUTION MODES
+.TP
+.B manual
+The default.
+Read-only tool calls (e.g.\& file reads, directory listings) run without
+prompting.
+Write, elevated, and destructive commands are shown and require confirmation.
+Destructive commands (e.g.\&
+.BR "rm -rf" )
+additionally require typing
+.B YES
+to confirm each one.
+.TP
+.B auto
+All tool calls run unattended.
+Equivalent to the
+.B \-\-autonomous
+flag in one-shot mode.
+.TP
+.B plan
+The agent proposes tool calls but never executes them.
+Equivalent to the
+.B \-\-dry\-run
+flag in one-shot mode.
+.SH ENVIRONMENT
+.TP
+.B ANTHROPIC_API_KEY
+API key for the Anthropic provider.
+.TP
+.B OPENAI_API_KEY
+API key for OpenAI-compatible providers.
+.TP
+.B SPAI_SESSION_ID
+Overrides the default session name for the current shell.
+.B install.sh
+injects
+.B "export SPAI_SESSION_ID=$$"
+into your shell RC files so each terminal window gets its own conversation.
+.TP
+.B XDG_CONFIG_HOME
+Base directory for configuration files.
+Defaults to
+.IR ~/.config .
+.TP
+.B XDG_DATA_HOME
+Base directory for session data.
+Defaults to
+.IR ~/.local/share .
+.TP
+.B INSTALL_DIR
+Override the binary install location for
+.IR install.sh .
+Defaults to
+.IR ~/.local/bin .
+.TP
+.B SPAI_FROM_SOURCE
+Set to
+.B 1
+to force
+.I install.sh
+to build from source instead of downloading a prebuilt binary.
+.SH FILES
+.TP
+.I ~/.config/spaish/spaid.toml
+Main configuration file: provider, model, MCP server list, and permission
+policy.
+Written by
+.B spai init
+and editable by hand.
+.TP
+.I ~/.local/share/spaish/sessions/
+Per-session subdirectories.
+Each contains a
+.I cache.json
+(conversation state) and a
+.I history
+log.
+.TP
+.I ~/.local/share/spaish/.first_run_done
+Sentinel file that suppresses the first-run disclaimer banner after the first
+invocation.
+.TP
+.I ~/.local/share/man/man1/spai.1
+Default install location for this man page.
+.TP
+.I SPAI.md
+Optional per-project context file (in the working directory) read by the agent
+to understand the project.
+Scaffold one with
+.B /init
+inside the REPL or
+.BR "spai init" .
+.SH EXAMPLES
+One-shot query:
+.PP
+.RS
+.EX
+spai "nginx keeps returning 502, find and fix it"
+.EE
+.RE
+.PP
+Pipe stdin as context:
+.PP
+.RS
+.EX
+git log | spai "anything worrying here?"
+.EE
+.RE
+.PP
+Ask about a failed command:
+.PP
+.RS
+.EX
+spai !!
+.EE
+.RE
+.PP
+Interactive session:
+.PP
+.RS
+.EX
+spai
+.EE
+.RE
+.PP
+Resume the last session:
+.PP
+.RS
+.EX
+spai resume
+.EE
+.RE
+.PP
+Force the local model for one query:
+.PP
+.RS
+.EX
+spai --local "summarise this file" @README.md
+.EE
+.RE
+.PP
+Dry-run (propose without executing):
+.PP
+.RS
+.EX
+spai --dry-run "rename all .txt files to .md"
+.EE
+.RE
+.PP
+Manage local models:
+.PP
+.RS
+.EX
+spai llm list
+spai llm pull qwen2.5-coder:7b
+spai llm use qwen2.5-coder:7b
+.EE
+.RE
+.PP
+Session management:
+.PP
+.RS
+.EX
+spai sessions             # list sessions
+spai sessions work        # create/switch to 'work' session
+spai sessions --reset     # unpin, revert to default
+spai history              # browse current session transcript
+spai clear                # wipe context
+spai compact              # summarise and compact
+.EE
+.RE
+.SH SEE ALSO
+.BR less (1),
+.BR ollama (1)
+.PP
+Project home and documentation:
+.I https://github.com/srjn45/spaiSH
+.PP
+MCP (Model Context Protocol):
+.I https://modelcontextprotocol.io
+.SH AUTHORS
+srjn45
+.SH LICENSE
+Apache License 2.0.
+See
+.I https://www.apache.org/licenses/LICENSE-2.0
+or run
+.B spai \-\-legal
+for the full text.
