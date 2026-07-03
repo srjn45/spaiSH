@@ -86,11 +86,113 @@ func TestClassifyParsing(t *testing.T) {
 	}
 }
 
-func TestTierString(t *testing.T) {
-	if permissions.TierDestructive.String() != "destructive" {
-		t.Error("unexpected string for TierDestructive")
+// TestClassifyBypassRegressions locks in fixes for commands that previously
+// under-classified (each line documents the tier they wrongly returned before).
+func TestClassifyBypassRegressions(t *testing.T) {
+	cases := []struct {
+		command string
+		want    permissions.Tier
+	}{
+		// sudo/doas value-taking flags used to hide the wrapped program: the
+		// flag's value ("root") was mistaken for the program, so the real rm
+		// was never seen (was elevated).
+		{"sudo -u root rm -rf /", permissions.TierDestructive},
+		{"sudo --user root rm -rf /", permissions.TierDestructive},
+		{"doas -u root rm -rf /home", permissions.TierDestructive},
+		{"sudo -g wheel -u root rm -rf /", permissions.TierDestructive},
+		// Attached-value form always worked; keep it covered.
+		{"sudo -uroot rm -rf /", permissions.TierDestructive},
+		// A benign sudo command stays elevated (no over-classification).
+		{"sudo -u root ls", permissions.TierElevated},
+		// find that deletes or executes a command (was read).
+		{"find . -delete", permissions.TierDestructive},
+		{"find /tmp -name '*.log' -exec rm -rf {} +", permissions.TierDestructive},
+		{"find . -type f -exec rm {} \\;", permissions.TierWrite}, // rm w/o -rf is write
+		{"find . -execdir shred {} +", permissions.TierDestructive},
+		{"find . -name '*.go' -exec cat {} \\;", permissions.TierRead}, // read-only exec stays read
+		{"find . -type f -name '*.tmp'", permissions.TierRead},         // plain find is read
+		// mkfs variants (was write): the base name has a filesystem suffix.
+		{"mkfs.ext4 /dev/sda1", permissions.TierDestructive},
+		{"mkfs.xfs /dev/nvme0n1", permissions.TierDestructive},
+		{"mke2fs /dev/sda1", permissions.TierDestructive},
+		// Writing a raw disk device via tee (was write).
+		{"echo x | tee /dev/sda", permissions.TierDestructive},
+		{"cat img | sudo tee /dev/nvme0n1", permissions.TierDestructive},
+		{"echo hi | tee ./notes.txt", permissions.TierWrite}, // ordinary tee stays write
+		// git global value-options hiding a dangerous subcommand (was write).
+		{"git -C /repo clean -fd", permissions.TierDestructive},
+		{"git -C /repo reset --hard", permissions.TierDestructive},
+		{"git -c core.pager=cat -C /r clean -f", permissions.TierDestructive},
+		{"git -C /repo status", permissions.TierRead}, // read subcommand still read
+		// Raw-disk redirect coverage broadened to more device families.
+		{"echo boom > /dev/vda", permissions.TierDestructive},
+		{"dd if=/dev/zero of=/dev/mmcblk0", permissions.TierDestructive},
 	}
-	if permissions.TierPassthrough.String() != "passthrough" {
-		t.Error("unexpected string for TierPassthrough")
+	for _, tc := range cases {
+		if got := permissions.Classify(tc.command); got != tc.want {
+			t.Errorf("Classify(%q) = %v, want %v", tc.command, got, tc.want)
+		}
+	}
+}
+
+// TestClassifyMoreCommands covers docker/systemctl subcommands, the
+// unparseable-input fail-safe, and empty/whitespace input.
+func TestClassifyMoreCommands(t *testing.T) {
+	cases := []struct {
+		command string
+		want    permissions.Tier
+	}{
+		// docker
+		{"docker ps", permissions.TierRead},
+		{"docker images", permissions.TierRead},
+		{"docker rmi img", permissions.TierDestructive},
+		{"docker system prune -af", permissions.TierDestructive},
+		{"docker run -it ubuntu", permissions.TierElevated},
+		// systemctl
+		{"systemctl is-active nginx", permissions.TierRead},
+		{"systemctl daemon-reload", permissions.TierElevated},
+		// pip
+		{"pip install requests", permissions.TierElevated},
+		{"pip3 uninstall requests", permissions.TierElevated},
+		{"pip list", permissions.TierRead},
+		// empty / whitespace input
+		{"", permissions.TierPassthrough},
+		{"   ", permissions.TierPassthrough},
+		// Unparseable input fails safe to at least Write, and still catches a
+		// device write via the raw-string escalation path.
+		{`echo "unterminated`, permissions.TierWrite},
+		{`dd of=/dev/sda if="unterminated`, permissions.TierDestructive},
+	}
+	for _, tc := range cases {
+		if got := permissions.Classify(tc.command); got != tc.want {
+			t.Errorf("Classify(%q) = %v, want %v", tc.command, got, tc.want)
+		}
+	}
+}
+
+func TestTierStringAndDisplay(t *testing.T) {
+	tiers := []struct {
+		tier    permissions.Tier
+		str     string
+		display string
+	}{
+		{permissions.TierPassthrough, "passthrough", "Passthrough"},
+		{permissions.TierRead, "read", "Read"},
+		{permissions.TierWrite, "write", "Write"},
+		{permissions.TierElevated, "elevated", "Elevated (requires sudo)"},
+		{permissions.TierDestructive, "destructive", "Destructive — cannot be undone"},
+	}
+	for _, tc := range tiers {
+		if got := tc.tier.String(); got != tc.str {
+			t.Errorf("%d.String() = %q, want %q", tc.tier, got, tc.str)
+		}
+		if got := tc.tier.Display(); got != tc.display {
+			t.Errorf("%d.Display() = %q, want %q", tc.tier, got, tc.display)
+		}
+	}
+	// Out-of-range tier falls through to the default arms.
+	bogus := permissions.Tier(99)
+	if bogus.String() != "unknown" || bogus.Display() != "Unknown" {
+		t.Errorf("bogus tier = (%q, %q), want (unknown, Unknown)", bogus.String(), bogus.Display())
 	}
 }
