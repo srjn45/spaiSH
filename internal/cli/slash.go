@@ -3,7 +3,11 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/chzyer/readline"
 
@@ -32,6 +36,92 @@ func completer() *readline.PrefixCompleter {
 	)
 }
 
+// replCompleter routes tab-completion between slash commands and @-path
+// references. It implements readline.AutoCompleter.
+//
+// Branching, based on the word under the cursor:
+//   - a word starting with '@' anywhere in the line → filesystem completion
+//     (files and directories relative to cwd),
+//   - otherwise, when the line begins with '/', slash-command completion
+//     (delegated to the existing PrefixCompleter, unchanged),
+//   - otherwise, no completion.
+type replCompleter struct {
+	cwd   string
+	slash readline.AutoCompleter
+}
+
+// newCompleter builds the REPL's combined completer rooted at cwd.
+func newCompleter(cwd string) *replCompleter {
+	return &replCompleter{cwd: cwd, slash: completer()}
+}
+
+// Do implements readline.AutoCompleter. See replCompleter for the routing rules.
+func (c *replCompleter) Do(line []rune, pos int) ([][]rune, int) {
+	if pos > len(line) {
+		pos = len(line)
+	}
+	// Find the whitespace-delimited word ending at the cursor.
+	start := pos
+	for start > 0 && !unicode.IsSpace(line[start-1]) {
+		start--
+	}
+	word := line[start:pos]
+
+	if len(word) > 0 && word[0] == '@' {
+		return atPathCompletions(c.cwd, string(word[1:]))
+	}
+
+	if strings.HasPrefix(strings.TrimLeft(string(line[:pos]), " "), "/") {
+		return c.slash.Do(line, pos)
+	}
+	return nil, 0
+}
+
+// atPathCompletions lists filesystem completions for the path fragment typed
+// after '@' (frag is the text after '@', up to the cursor). It returns the
+// suffixes to append to the current path component and the rune length of that
+// component (the offset readline uses to render candidates).
+//
+// Matching is a case-sensitive prefix match against the entries of the
+// fragment's directory; directories get a trailing '/' so completion can
+// continue into them. Hidden entries are offered only once the fragment's
+// component begins with '.'. A missing or unreadable directory yields no
+// suggestions rather than an error.
+func atPathCompletions(cwd, frag string) ([][]rune, int) {
+	dir, base := ".", frag
+	if i := strings.LastIndex(frag, "/"); i >= 0 {
+		dir, base = frag[:i+1], frag[i+1:]
+	}
+
+	listDir := dir
+	if !filepath.IsAbs(dir) {
+		listDir = filepath.Join(cwd, dir)
+	}
+
+	offset := utf8.RuneCountInString(base)
+	entries, err := os.ReadDir(listDir)
+	if err != nil {
+		return nil, offset
+	}
+
+	var out [][]rune
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, base) {
+			continue
+		}
+		if strings.HasPrefix(name, ".") && !strings.HasPrefix(base, ".") {
+			continue // hide dotfiles unless explicitly reached for
+		}
+		suffix := name[len(base):]
+		if e.IsDir() {
+			suffix += "/"
+		}
+		out = append(out, []rune(suffix))
+	}
+	return out, offset
+}
+
 // handleSlash runs a slash command. It returns true if the REPL should exit.
 func (r *REPL) handleSlash(line string) bool {
 	fields := strings.Fields(line)
@@ -43,6 +133,10 @@ func (r *REPL) handleSlash(line string) bool {
 		return true
 
 	case "/help":
+		if len(args) > 0 {
+			r.printCommandHelp(args[0])
+			break
+		}
 		fmt.Print(helpText)
 
 	case "/mode":
@@ -200,22 +294,58 @@ func (r *REPL) printHistory() {
 	fmt.Println(content)
 }
 
+// printCommandHelp prints the detailed help for a single slash command, as
+// requested via `/help <command>`. The leading slash is optional.
+func (r *REPL) printCommandHelp(name string) {
+	if !strings.HasPrefix(name, "/") {
+		name = "/" + name
+	}
+	detail, ok := commandDetails[name]
+	if !ok {
+		fmt.Printf("%s no help for %q — try %s\n", red("✗"), name, cyan("/help"))
+		return
+	}
+	fmt.Printf("%s  %s\n", cyan(name), detail)
+}
+
+// commandDetails holds the long-form help shown by `/help <command>`. Its keys
+// are the canonical slash commands; keep it in sync with handleSlash and
+// helpText (slash_test.go asserts this).
+var commandDetails = map[string]string{
+	"/help":    "show the command list, or `/help <command>` for details on one command.",
+	"/mode":    "show the execution mode, or set it: manual (confirm every tool), auto (run unattended), plan (draft a plan, run nothing). Shift-Tab cycles it.",
+	"/model":   "show configured providers/models, or switch: `/model ollama`, `/model openai:gpt-4o`.",
+	"/tools":   "list the tools available to the agent this session.",
+	"/mcp":     "connect to the configured MCP servers and show their status and discovered tools.",
+	"/cost":    "show the estimated token usage and dollar cost for this session.",
+	"/clear":   "wipe the session's conversation context, keeping the session open.",
+	"/compact": "summarise the conversation so far and compact it to reclaim context.",
+	"/history": "print the full transcript recorded for this session.",
+	"/quit":    "leave the session (aliases: /exit, /q; Ctrl+D also exits).",
+}
+
 const helpText = `
 Commands:
-  /help              show this help
+  /help [command]    show this help, or details for one command
   /mode [m]          show or set execution mode (manual | auto | plan)
   /model [sel]       show providers, or switch (e.g. /model ollama, /model openai:gpt-4o)
-  /tools             list available tools
+  /tools             list the tools available to the agent
   /mcp               show MCP server connection status and discovered tools
   /cost              show estimated token usage and cost for this session
   /clear             wipe the session's conversation context
-  /compact           summarise and compact the session
-  /history           print the session history
-  /quit              leave the session
+  /compact           summarise and compact the session to reclaim context
+  /history           print the session transcript
+  /quit, /exit       leave the session
 
-Tips:
-  - Reference a file with @path to include its contents in your message.
-  - Shift-Tab cycles the execution mode (manual → auto → plan).
-  - Esc or Ctrl+C cancels the current turn; Ctrl+D (or /quit) exits.
+References:
+  @path              include a file's contents in your message; press Tab
+                     after @ to complete file and directory names (a trailing
+                     / marks a directory you can descend into).
+
+Keys:
+  Tab                complete /commands (at line start) and @paths (anywhere)
+  Shift-Tab          cycle the execution mode (manual → auto → plan)
+  Esc / Ctrl+C       cancel the current turn
+  Ctrl+D             exit the session
 
 `

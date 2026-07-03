@@ -62,7 +62,7 @@ func (r *REPL) Run() error {
 		HistoryFile:            historyFile(),
 		HistorySearchFold:      true,
 		DisableAutoSaveHistory: false,
-		AutoComplete:           completer(),
+		AutoComplete:           newCompleter(r.cwd),
 		InterruptPrompt:        "^C",
 		EOFPrompt:              "exit",
 		// Read Shift-Tab from a wrapper that rewrites CSI Z to a sentinel rune,
