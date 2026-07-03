@@ -27,24 +27,14 @@ The core agent is built and working:
 - [x] Diff preview for `edit_file`/`write_file` before confirmation
 - [x] MCP tool integration — connect external MCP servers, bridge their tools
 - [x] More tools — `web_fetch`, `apply_patch` (structured patch/apply)
+- [x] Expanded tool surface — `git`, `multi_edit`, `code_exec`, vision input,
+      `todo_write`, `http_request`
+- [x] Test-coverage and permission-classifier hardening pass
 
 ## Next
 
-### Expand tool surface
-
-- [ ] `git` tool — structured `status`/`diff`/`log`/`blame`/`branch` subcommands,
-      permission-tiered independently of raw `bash` (read-only git ops auto-run,
-      mutating ones like `commit`/`push` stay gated)
-- [ ] `multi_edit` — regex-based find & replace across a glob of files in one
-      call, with the existing diff-preview confirmation before writing
-- [ ] `code_exec` — sandboxed, ephemeral code execution (Python/Node) as a tool
-      distinct from `bash`, with its own timeout/resource limits and tier
-- [x] Vision input — let the agent read image files (screenshots, diagrams) and
-      pass them through to vision-capable providers (Anthropic native first)
-- [ ] `todo` tool — an agent-visible task list for self-tracking progress on
-      multi-step work, surfaced in the REPL renderer
-- [ ] `http_request` — a generic REST tool (method/headers/body/auth) to
-      complement the read-only `web_fetch`
+Every seeded "Next" item is now shipped — this section is intentionally empty
+until new directions are chosen.
 
 ## Recently completed
 
@@ -53,6 +43,12 @@ The core agent is built and working:
 - [x] Streaming MCP tool discovery + `/mcp` status slash command
 - [x] Cost/token usage reporting per session
 - [x] `@`-completion for files and richer slash-command help
+- [x] `git` tool — structured status/diff/log/blame/branch, per-subcommand tiering
+- [x] `multi_edit` — regex find & replace across a glob of files
+- [x] `code_exec` — ephemeral Python/Node execution (explicitly not sandboxed)
+- [x] Vision input — image files passed through to vision-capable providers
+- [x] `todo_write` — in-session task list surfaced in the REPL
+- [x] `http_request` — generic REST tool (method/headers/body)
 
 ## Parked ideas
 
