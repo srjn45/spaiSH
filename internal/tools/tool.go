@@ -55,6 +55,7 @@ func DefaultRegistry() *Registry {
 		&ApplyPatch{},
 		&HTTPRequest{},
 		&MultiEdit{},
+		&Git{},
 	)
 }
 
