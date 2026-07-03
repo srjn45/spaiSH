@@ -185,9 +185,73 @@ func (r *REPL) handleSlash(line string) bool {
 		r.printHistory()
 
 	default:
-		fmt.Printf("%s unknown command %q — try %s\n", red("✗"), cmd, cyan("/help"))
+		if s := suggestCommand(cmd); s != "" {
+			fmt.Printf("%s unknown command %q — did you mean %s?\n", red("✗"), cmd, cyan(s))
+		} else {
+			fmt.Printf("%s unknown command %q — try %s\n", red("✗"), cmd, cyan("/help"))
+		}
 	}
 	return false
+}
+
+// knownCommands is the full set of slash commands (canonical plus aliases),
+// derived from commandDetails so it can't drift from the handled set.
+func knownCommands() []string {
+	cmds := make([]string, 0, len(commandDetails)+2)
+	for c := range commandDetails {
+		cmds = append(cmds, c)
+	}
+	return append(cmds, "/exit", "/q")
+}
+
+// suggestCommand returns the known slash command closest to cmd within a small
+// edit distance, or "" when nothing is close enough — so a genuine typo like
+// "/hlep" suggests "/help" while unrelated input gets the plain error.
+func suggestCommand(cmd string) string {
+	best, bestDist := "", 0
+	for _, k := range knownCommands() {
+		d := levenshtein(cmd, k)
+		if best == "" || d < bestDist {
+			best, bestDist = k, d
+		}
+	}
+	if best != "" && bestDist <= 2 {
+		return best
+	}
+	return ""
+}
+
+// levenshtein returns the edit distance between a and b (byte-wise; slash
+// command names are ASCII).
+func levenshtein(a, b string) int {
+	prev := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur := make([]int, len(b)+1)
+		cur[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur[j] = min3(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(b)]
+}
+
+func min3(a, b, c int) int {
+	m := a
+	if b < m {
+		m = b
+	}
+	if c < m {
+		m = c
+	}
+	return m
 }
 
 func (r *REPL) runSession(command string) {
@@ -286,7 +350,11 @@ func (r *REPL) printHistory() {
 		fmt.Printf("%s %v\n", red("✗"), err)
 		return
 	}
-	content, _ := sess.ReadAllHistory()
+	content, err := sess.ReadAllHistory()
+	if err != nil {
+		fmt.Printf("%s %v\n", red("✗"), err)
+		return
+	}
 	if strings.TrimSpace(content) == "" {
 		fmt.Println(dim("(no history yet)"))
 		return

@@ -141,6 +141,49 @@ func handledCommands(t *testing.T, src string) map[string]bool {
 	return out
 }
 
+func TestSuggestCommand(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"/hlep", "/help"},   // transposition
+		{"/mdoe", "/mode"}, // transposition
+		{"/moddel", "/model"}, // one insertion
+		{"/modle", "/mode"},   // nearer to /mode (1 edit) than /model (2 edits)
+		{"/quiy", "/quit"},   // one substitution
+		{"/exi", "/exit"},    // one deletion (alias)
+		{"/cost", "/cost"},   // exact (still returns itself)
+		{"/help", "/help"},   // exact
+		// Too far from any command -> no suggestion (plain error path).
+		{"/xyzzy", ""},
+		{"/deploy", ""},
+	}
+	for _, tc := range tests {
+		if got := suggestCommand(tc.in); got != tc.want {
+			t.Errorf("suggestCommand(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestLevenshtein(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want int
+	}{
+		{"", "", 0},
+		{"abc", "abc", 0},
+		{"abc", "abd", 1},
+		{"kitten", "sitting", 3},
+		{"", "abc", 3},
+		{"/help", "/hlep", 2},
+	}
+	for _, tc := range cases {
+		if got := levenshtein(tc.a, tc.b); got != tc.want {
+			t.Errorf("levenshtein(%q,%q) = %d, want %d", tc.a, tc.b, got, tc.want)
+		}
+	}
+}
+
 func mustWrite(t *testing.T, path string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
