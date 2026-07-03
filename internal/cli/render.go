@@ -72,6 +72,8 @@ func RenderResponse(resp protocol.Response) {
 		}
 	case "output":
 		fmt.Print(dim(resp.Content))
+	case "todo":
+		fmt.Print(renderTodoList(resp.Content, isTerminal(os.Stdout)))
 	case "error":
 		fmt.Fprintf(os.Stderr, "\n%s\n", red("error: "+resp.Content))
 	}
@@ -127,6 +129,9 @@ func (r *Renderer) Render(resp protocol.Response) {
 	case "output":
 		r.Flush()
 		fmt.Print(r.style(resp.Content, dim))
+	case "todo":
+		r.Flush()
+		fmt.Print(renderTodoList(resp.Content, r.tty))
 	case "error":
 		r.Flush()
 		fmt.Fprintf(os.Stderr, "\n%s\n", r.style("error: "+resp.Content, red))
@@ -166,6 +171,33 @@ func (r *Renderer) Flush() {
 // isTerminal reports whether f refers to a terminal (vs. a pipe or file).
 func isTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
+}
+
+// renderTodoList formats a todo_write checklist for terminal output. On a TTY,
+// completed items are green, in-progress items are yellow, and pending items are
+// dim. On non-TTY output the plain text is returned unchanged.
+func renderTodoList(content string, tty bool) string {
+	if !tty {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	var sb strings.Builder
+	for _, line := range lines {
+		switch {
+		case strings.Contains(line, "[x]"):
+			sb.WriteString(green(line))
+		case strings.Contains(line, "[~]"):
+			sb.WriteString(yellow(line))
+		case strings.Contains(line, "[ ]"):
+			sb.WriteString(dim(line))
+		case strings.TrimSpace(line) != "":
+			sb.WriteString(bold(line))
+		default:
+			sb.WriteString(line)
+		}
+		sb.WriteByte('\n')
+	}
+	return sb.String()
 }
 
 // Spinner shows an animated working indicator on stderr until stopped. Output
