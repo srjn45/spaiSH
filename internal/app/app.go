@@ -335,11 +335,12 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 		WorkingDir:    req.WorkingDir,
 		GitBranch:     req.GitBranch,
 		Stdin:         req.Stdin,
-		Policy: permissions.NewPolicy(
+		Policy: permissions.NewPolicy(config.MergeProjectPermissions(
 			a.cfg.Permissions.Tools,
 			a.cfg.Permissions.MCPServers,
 			a.cfg.Permissions.AllowCommands,
-		),
+			req.WorkingDir,
+		)),
 	}
 
 	ag := agent.NewWithRegistry(provider, agentCfg, confirmFn, a.toolRegistry())
