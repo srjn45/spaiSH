@@ -245,6 +245,8 @@ func classify(tc ai.ToolCall) (permissions.Tier, string) {
 	case "bash":
 		cmd := tools.Command(tc.Input)
 		return permissions.Classify(cmd), cmd
+	case "http_request":
+		return permissions.TierElevated, "http_request " + tools.URLArg(tc.Input)
 	case "write_file", "edit_file":
 		return permissions.TierWrite, tc.Name + " " + tools.PathArg(tc.Input)
 	default:
