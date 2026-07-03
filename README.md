@@ -74,15 +74,18 @@ Run `spai` with no arguments for a multi-turn session. Slash commands:
 | Command | What it does |
 |---|---|
 | `/mode manual\|auto\|plan` | set how tool calls are gated |
-| `/model` | show the active provider and model |
+| `/model [sel]` | show providers/models, or switch (`/model ollama`, `/model openai:gpt-4o`) |
 | `/tools` | list available tools |
+| `/mcp` | show MCP server status and their discovered tools |
+| `/cost` | show estimated token usage and cost for the session |
 | `/clear` | wipe the conversation context |
 | `/compact` | summarise and compact the session |
 | `/history` | print the session history |
-| `/help`, `/quit` | help, exit |
+| `/help`, `/quit` | help (`/help <command>` for detail), exit |
 
-Reference a file with `@path` to include its contents. `Ctrl+C` cancels the
-current turn; `Ctrl+D` exits.
+Reference a file with `@path` to include its contents — press `Tab` after `@`
+to complete file and directory names. `Shift-Tab` cycles the execution mode.
+`Ctrl+C` (or `Esc`) cancels the current turn; `Ctrl+D` exits.
 
 ### Modes
 
@@ -102,6 +105,11 @@ back until the task is done. Tools: `bash`, `read_file`, `write_file`,
 Command safety is decided by **parsing** each shell command (not substring
 matching), so `rm -rf`, `rm --recursive`, and `a && rm -rf b` are all caught,
 while `echo "rm -rf"` is not.
+
+You can layer a **configurable policy** on top of the tier gate in the
+`[permissions]` section of `spaid.toml` — allow/confirm/deny per tool or per MCP
+server, plus a bash `allow_commands` prefix allowlist (e.g. `git status`) that
+bypasses confirmation. See the annotated `config/spaid.toml` for the keys.
 
 Sessions are file-backed and auto-compact when they grow large.
 
