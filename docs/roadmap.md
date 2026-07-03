@@ -35,7 +35,7 @@ The roadmap's original "Next" list is fully shipped. Candidate directions:
 - [ ] First tagged release (`v0.1.0`) — cut a tag and publish prebuilt binaries
 - [ ] Per-tool / per-MCP-server permission policy and allowlists
 - [ ] Streaming MCP tool discovery + `/mcp` status slash command
-- [ ] Cost/token usage reporting per session
+- [x] Cost/token usage reporting per session
 - [ ] `@`-completion for files and richer slash-command help
 
 ## Parked ideas

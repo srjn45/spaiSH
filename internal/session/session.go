@@ -150,6 +150,42 @@ func (s *Session) ApproxTokens() int {
 	return chars / 4
 }
 
+// Usage is an estimate-based breakdown of a session's token footprint, derived
+// from stored message content via the same ~4-chars-per-token heuristic as
+// ApproxTokens. The split between prompt (input) and generated (output) tokens
+// is approximate: user turns, tool results and the summary count as prompt;
+// assistant turns and tool-call arguments count as generated.
+type Usage struct {
+	PromptTokens    int // user + tool-result + summary content
+	GeneratedTokens int // assistant + tool-call content
+}
+
+// TotalTokens returns the combined prompt and generated token estimate.
+func (u Usage) TotalTokens() int { return u.PromptTokens + u.GeneratedTokens }
+
+// EstimateUsage returns an estimated prompt/generated token breakdown for the
+// session using the ~4-chars-per-token heuristic. Its total matches
+// ApproxTokens; the prompt/generated split is a best-effort classification by
+// message role and is intended for reporting, not billing.
+func (s *Session) EstimateUsage() Usage {
+	promptChars := len(s.Summary)
+	genChars := 0
+	for _, m := range s.Messages {
+		if m.Role == "assistant" {
+			genChars += len(m.Content)
+		} else {
+			promptChars += len(m.Content)
+		}
+		for _, tc := range m.ToolCalls {
+			genChars += len(tc.Input)
+		}
+		for _, tr := range m.ToolResults {
+			promptChars += len(tr.Content)
+		}
+	}
+	return Usage{PromptTokens: promptChars / 4, GeneratedTokens: genChars / 4}
+}
+
 // CompactOlder stores summary as the session summary and keeps only the most
 // recent keep messages, discarding the rest. Used by auto-compaction.
 func (s *Session) CompactOlder(summary string, keep int) {

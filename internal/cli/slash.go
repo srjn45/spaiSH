@@ -8,6 +8,7 @@ import (
 	"github.com/chzyer/readline"
 
 	"spaish/internal/agent"
+	"spaish/internal/pricing"
 	"spaish/internal/protocol"
 	"spaish/internal/session"
 	"spaish/internal/tools"
@@ -20,6 +21,7 @@ func completer() *readline.PrefixCompleter {
 		readline.PcItem("/mode", readline.PcItem("manual"), readline.PcItem("auto"), readline.PcItem("plan")),
 		readline.PcItem("/model", readline.PcItem("anthropic"), readline.PcItem("openai"), readline.PcItem("ollama")),
 		readline.PcItem("/tools"),
+		readline.PcItem("/cost"),
 		readline.PcItem("/clear"),
 		readline.PcItem("/compact"),
 		readline.PcItem("/history"),
@@ -71,6 +73,9 @@ func (r *REPL) handleSlash(line string) bool {
 			fmt.Printf("  %s  %s\n", cyan(t.Name), dim(t.Description))
 		}
 
+	case "/cost":
+		r.printCost()
+
 	case "/clear":
 		r.runSession("clear")
 
@@ -116,6 +121,38 @@ func (r *REPL) printModels() {
 	fmt.Println(dim("switch with: /model <provider> [model]  (e.g. /model ollama, /model openai:gpt-4o)"))
 }
 
+// printCost reports the active model, the estimated token footprint of the
+// current session, and the estimated dollar cost using the pricing table.
+// Estimates come from the session's ~4-chars-per-token heuristic; local and
+// unknown models degrade gracefully.
+func (r *REPL) printCost() {
+	model := r.app.ActiveModel()
+
+	sess, err := session.LoadByID(r.sessionID)
+	if err != nil {
+		fmt.Printf("%s %v\n", red("✗"), err)
+		return
+	}
+	usage := sess.EstimateUsage()
+
+	rate, known := pricing.Lookup(model)
+	cost := rate.Cost(usage.PromptTokens, usage.GeneratedTokens)
+
+	fmt.Printf("model:  %s\n", bold(r.app.ProviderInfo()))
+	fmt.Printf("tokens: ~%s  (prompt ~%s / generated ~%s)\n",
+		commafy(usage.TotalTokens()), commafy(usage.PromptTokens), commafy(usage.GeneratedTokens))
+	switch {
+	case known && rate.Local:
+		fmt.Printf("cost:   %s\n", dim("$0.00 (local)"))
+	case known:
+		fmt.Printf("cost:   ~$%.4f  %s\n", cost,
+			dim(fmt.Sprintf("($%.0f/$%.0f per 1M in/out)", rate.Input, rate.Output)))
+	default:
+		fmt.Printf("cost:   %s\n", dim("unknown pricing for "+model))
+	}
+	fmt.Println(dim("estimate only — based on a ~4-chars-per-token heuristic."))
+}
+
 func (r *REPL) printHistory() {
 	sess, err := session.LoadByID(r.sessionID)
 	if err != nil {
@@ -136,6 +173,7 @@ Commands:
   /mode [m]          show or set execution mode (manual | auto | plan)
   /model [sel]       show providers, or switch (e.g. /model ollama, /model openai:gpt-4o)
   /tools             list available tools
+  /cost              show estimated token usage and cost for this session
   /clear             wipe the session's conversation context
   /compact           summarise and compact the session
   /history           print the session history

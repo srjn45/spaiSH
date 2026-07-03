@@ -37,6 +37,26 @@ func green(s string) string  { return ansiGreen + s + ansiReset }
 func yellow(s string) string { return ansiYellow + s + ansiReset }
 func bold(s string) string   { return ansiBold + s + ansiReset }
 
+// commafy renders a non-negative int with thousands separators.
+func commafy(n int) string {
+	s := fmt.Sprintf("%d", n)
+	if n < 1000 {
+		return s
+	}
+	var b strings.Builder
+	pre := len(s) % 3
+	if pre > 0 {
+		b.WriteString(s[:pre])
+	}
+	for i := pre; i < len(s); i += 3 {
+		if b.Len() > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(s[i : i+3])
+	}
+	return b.String()
+}
+
 // RenderResponse writes one streamed response chunk to the terminal without
 // markdown styling. Tool activity lines (prefixed with ▶) are highlighted; tool
 // output is dimmed; errors go to stderr in red. It is used for simple status
