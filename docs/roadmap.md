@@ -30,8 +30,23 @@ The core agent is built and working:
 
 ## Next
 
-Every seeded "Next" item is now shipped — this section is intentionally empty
-until new directions are chosen. Recently completed:
+### Expand tool surface
+
+- [ ] `git` tool — structured `status`/`diff`/`log`/`blame`/`branch` subcommands,
+      permission-tiered independently of raw `bash` (read-only git ops auto-run,
+      mutating ones like `commit`/`push` stay gated)
+- [ ] `multi_edit` — regex-based find & replace across a glob of files in one
+      call, with the existing diff-preview confirmation before writing
+- [ ] `code_exec` — sandboxed, ephemeral code execution (Python/Node) as a tool
+      distinct from `bash`, with its own timeout/resource limits and tier
+- [ ] Vision input — let the agent read image files (screenshots, diagrams) and
+      pass them through to vision-capable providers (Anthropic native first)
+- [ ] `todo` tool — an agent-visible task list for self-tracking progress on
+      multi-step work, surfaced in the REPL renderer
+- [ ] `http_request` — a generic REST tool (method/headers/body/auth) to
+      complement the read-only `web_fetch`
+
+## Recently completed
 
 - [x] First tagged release (`v0.1.0`) — cut a tag and publish prebuilt binaries
 - [x] Per-tool / per-MCP-server permission policy and allowlists
