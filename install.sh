@@ -138,6 +138,31 @@ inject_session_id() {
   fi
 }
 
+install_completions() {
+  comp_src="$REPO_DIR/completions"
+  [ -d "$comp_src" ] || return 0
+
+  echo "Installing shell completions..."
+
+  bash_dir="$HOME/.local/share/bash-completion/completions"
+  if mkdir -p "$bash_dir" 2>/dev/null; then
+    cp "$comp_src/spai.bash" "$bash_dir/spai" 2>/dev/null && \
+      echo "  → bash completion → $bash_dir/spai" || true
+  fi
+
+  zsh_dir="$HOME/.local/share/zsh/site-functions"
+  if mkdir -p "$zsh_dir" 2>/dev/null; then
+    cp "$comp_src/spai.zsh" "$zsh_dir/_spai" 2>/dev/null && \
+      echo "  → zsh completion  → $zsh_dir/_spai" || true
+  fi
+
+  fish_dir="$HOME/.config/fish/completions"
+  if mkdir -p "$fish_dir" 2>/dev/null; then
+    cp "$comp_src/spai.fish" "$fish_dir/spai.fish" 2>/dev/null && \
+      echo "  → fish completion → $fish_dir/spai.fish" || true
+  fi
+}
+
 echo "Configuring per-terminal sessions..."
 inject_session_id "$HOME/.bashrc"
 inject_session_id "$HOME/.zshrc"
@@ -168,6 +193,7 @@ install_man_page() {
 }
 
 install_man_page
+install_completions
 
 echo ""
 echo "Installed spai → $INSTALL_DIR/spai"
