@@ -33,21 +33,14 @@ The core agent is built and working:
 - [x] Project context & subagents — `SPAI.md` project-instructions file,
       `/init` scaffold command, `delegate` (subagent) tool with a hard depth-1
       limit, and per-project `.spai/settings.toml` permission overrides
+- [x] Distribution & polish — shell completions (`completions/spai.{bash,zsh,fish}`),
+      a `man` page (`docs/spai.1`), a Homebrew formula (`Formula/spai.rb`), and
+      `.deb`/`.rpm` packaging via `nfpm` in `release.yml`
 
 ## Next
 
-### Distribution & polish
-
-- [x] Shell completions — hand-written `completions/spai.{bash,zsh,fish}`
-      scripts covering `spai`'s subcommands/flags; `install.sh` installs them
-      to the right per-shell location
-- [x] `man` page — `docs/spai.1`, installed by `install.sh` to
-      `~/.local/share/man/man1`
-- [x] Homebrew formula — `Formula/spai.rb` pointing at the existing tagged
-      release tarballs + checksums from `.github/workflows/release.yml`, with
-      README instructions for `brew tap srjn45/spaish` / `brew install spai`
-- [ ] `.deb`/`.rpm` packaging via `nfpm` in `release.yml`, bundling the binary
-      with the shell completions and man page now that both exist
+Every seeded "Next" item is now shipped — this section is intentionally empty
+until new directions are chosen.
 
 ## Recently completed
 
@@ -69,6 +62,11 @@ The core agent is built and working:
       parent's confirmation gate
 - [x] Per-project `.spai/settings.toml` permission overrides, layered over
       global config
+- [x] Shell completions — `completions/spai.{bash,zsh,fish}`, installed by
+      `install.sh`
+- [x] `man` page — `docs/spai.1`, installed by `install.sh`
+- [x] Homebrew formula — `Formula/spai.rb` + `brew tap`/`install` instructions
+- [x] `.deb`/`.rpm` packaging via `nfpm`, wired into `release.yml`
 
 ## Parked ideas
 
