@@ -22,6 +22,15 @@ type Tool interface {
 	Run(ctx context.Context, input json.RawMessage) (string, error)
 }
 
+// ImageProducer is an optional interface a Tool may implement to attach image
+// content to its result. After running such a tool, the agent calls Images and
+// carries the returned images into the ai.ToolResult, so vision-capable
+// providers can forward them to the model. Tools that only return text need not
+// implement it.
+type ImageProducer interface {
+	Images(input json.RawMessage) ([]ai.ImageContent, error)
+}
+
 // Registry holds the available tools in a stable order.
 type Registry struct {
 	tools map[string]Tool
@@ -46,6 +55,7 @@ func DefaultRegistry() *Registry {
 	return NewRegistry(
 		&Bash{},
 		&ReadFile{},
+		&ReadImage{},
 		&WriteFile{},
 		&EditFile{},
 		&Glob{},

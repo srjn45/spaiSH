@@ -224,7 +224,15 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 			if isErr {
 				content = runErr.Error()
 			}
-			results = append(results, ai.ToolResult{ToolUseID: tc.ID, Content: content, IsError: isErr})
+			result := ai.ToolResult{ToolUseID: tc.ID, Content: content, IsError: isErr}
+			// Tools that produce images (e.g. read_image) attach them to the
+			// result so vision-capable providers can forward them to the model.
+			if ip, ok := tool.(tools.ImageProducer); ok && !isErr {
+				if imgs, imgErr := ip.Images(tc.Input); imgErr == nil {
+					result.Images = imgs
+				}
+			}
+			results = append(results, result)
 
 			if tc.Name == "todo_write" && !isErr {
 				send(ctx, ch, protocol.Response{Type: "todo", Content: out})
@@ -262,6 +270,9 @@ func classify(tc ai.ToolCall) (permissions.Tier, string) {
 		// not sandboxed, so it gets bash's worst-case tier — no easier ride just
 		// because it looks like a narrower tool.
 		return permissions.TierDestructive, tc.Name
+	case "read_image":
+		// Reading an image is a read, not a mutation: no confirmation gate.
+		return permissions.TierRead, tc.Name + " " + tools.PathArg(tc.Input)
 	default:
 		// MCP tools (mcp__<server>__<tool>) are external; gate them at Write
 		// tier so they require confirmation in manual mode.

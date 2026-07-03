@@ -124,10 +124,20 @@ func toAnthropicMessages(messages []Message) []anthropic.MessageParam {
 		default: // user (and any tool-result turns)
 			var blocks []anthropic.ContentBlockParamUnion
 			for _, tr := range m.ToolResults {
-				blocks = append(blocks, anthropic.NewToolResultBlock(tr.ToolUseID, tr.Content, tr.IsError))
+				// Text-only results keep the exact legacy shape; only results that
+				// carry images build the block by hand (to embed image content).
+				if len(tr.Images) == 0 {
+					blocks = append(blocks, anthropic.NewToolResultBlock(tr.ToolUseID, tr.Content, tr.IsError))
+					continue
+				}
+				blocks = append(blocks, toolResultBlockWithImages(tr))
 			}
 			if m.Content != "" {
 				blocks = append(blocks, anthropic.NewTextBlock(m.Content))
+			}
+			// Images attached directly to a user turn (vision input).
+			for _, img := range m.Images {
+				blocks = append(blocks, anthropic.NewImageBlockBase64(img.MediaType, img.Data))
 			}
 			if len(blocks) > 0 {
 				out = append(out, anthropic.NewUserMessage(blocks...))
@@ -135,6 +145,26 @@ func toAnthropicMessages(messages []Message) []anthropic.MessageParam {
 		}
 	}
 	return out
+}
+
+// toolResultBlockWithImages builds a tool_result content block whose content is
+// the result text (when present) followed by any images the tool produced.
+// Anthropic tool_result blocks accept image content blocks natively.
+func toolResultBlockWithImages(tr ToolResult) anthropic.ContentBlockParamUnion {
+	block := anthropic.ToolResultBlockParam{
+		ToolUseID: tr.ToolUseID,
+		IsError:   anthropic.Bool(tr.IsError),
+	}
+	if tr.Content != "" {
+		block.Content = append(block.Content, anthropic.ToolResultBlockParamContentUnion{
+			OfText: &anthropic.TextBlockParam{Text: tr.Content},
+		})
+	}
+	for _, img := range tr.Images {
+		ib := anthropic.NewImageBlockBase64(img.MediaType, img.Data)
+		block.Content = append(block.Content, anthropic.ToolResultBlockParamContentUnion{OfImage: ib.OfImage})
+	}
+	return anthropic.ContentBlockParamUnion{OfToolResult: &block}
 }
 
 // toAnthropicTools converts neutral tool specs into SDK tool params.

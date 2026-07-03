@@ -414,6 +414,53 @@ func TestAgentToolErrorReportedAndContinues(t *testing.T) {
 	}
 }
 
+// imageTool is a fake ImageProducer: its Run returns a caption and it attaches
+// a fixed image via Images.
+type imageTool struct{ img ai.ImageContent }
+
+func (imageTool) Name() string           { return "read_image" }
+func (imageTool) Description() string     { return "fake image" }
+func (imageTool) Schema() map[string]any { return map[string]any{"type": "object"} }
+func (imageTool) Run(_ context.Context, _ json.RawMessage) (string, error) {
+	return "attached image", nil
+}
+func (t imageTool) Images(_ json.RawMessage) ([]ai.ImageContent, error) {
+	return []ai.ImageContent{t.img}, nil
+}
+
+// TestAgentImageToolAttachesImages verifies that a tool implementing
+// ImageProducer has its images carried into the tool result sent to the model,
+// and that read_image is gated at TierRead (no confirmation, even in manual
+// mode with a denying confirm func).
+func TestAgentImageToolAttachesImages(t *testing.T) {
+	img := ai.ImageContent{MediaType: "image/png", Data: "QUJD"}
+	reg := tools.NewRegistry(imageTool{img: img})
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("1", "read_image", `{"path":"pic.png"}`), doneEv()},
+		{textEv("I can see it"), doneEv()},
+	}}
+	// Manual mode + alwaysDeny: a read must not be gated, so the loop proceeds.
+	rs := run(t, p, agent.Config{Mode: agent.ModeManual}, alwaysDeny, reg, "look at pic.png")
+	if !strings.Contains(joinText(rs), "I can see it") {
+		t.Errorf("expected loop to continue past the read_image call, got %q", joinText(rs))
+	}
+
+	var found bool
+	for _, m := range p.lastReq.Messages {
+		for _, tr := range m.ToolResults {
+			if tr.ToolUseID == "1" {
+				if len(tr.Images) != 1 || tr.Images[0] != img {
+					t.Errorf("tool result images = %+v, want [%+v]", tr.Images, img)
+				}
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("no tool result for read_image found in %+v", p.lastReq.Messages)
+	}
+}
+
 // TestAgentVerboseEmitsTierLineAndOutput verifies verbose mode prints the tier
 // banner and the tool output even on success.
 func TestAgentVerboseEmitsTierLineAndOutput(t *testing.T) {

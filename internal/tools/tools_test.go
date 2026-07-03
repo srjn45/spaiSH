@@ -128,7 +128,7 @@ func TestRegistrySpecs(t *testing.T) {
 	if _, ok := r.Get("bash"); !ok {
 		t.Error("bash tool missing from default registry")
 	}
-	for _, name := range []string{"web_fetch", "apply_patch", "code_exec"} {
+	for _, name := range []string{"web_fetch", "apply_patch", "code_exec", "read_image"} {
 		if _, ok := r.Get(name); !ok {
 			t.Errorf("%s tool missing from default registry", name)
 		}
