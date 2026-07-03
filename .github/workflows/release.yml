@@ -47,14 +47,31 @@ jobs:
             rm -f dist/spai
           done
 
+      - name: Install nfpm
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+
+      - name: Package .deb and .rpm
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          for arch in amd64 arm64; do
+            tar -C dist -xzf "dist/spai_${VERSION}_linux_${arch}.tar.gz"
+            ARCH="${arch}" VERSION="${VERSION}" nfpm package --packager deb --target dist/
+            ARCH="${arch}" VERSION="${VERSION}" nfpm package --packager rpm --target dist/
+            rm -f dist/spai
+          done
+
       - name: Generate checksums
         working-directory: dist
-        run: sha256sum *.tar.gz > "spai_${{ steps.version.outputs.version }}_checksums.txt"
+        run: sha256sum *.tar.gz *.deb *.rpm > "spai_${{ steps.version.outputs.version }}_checksums.txt"
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
             dist/*_checksums.txt
           generate_release_notes: true

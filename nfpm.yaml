@@ -1,0 +1,23 @@
+name: spai
+arch: "${ARCH}"
+version: "${VERSION}"
+maintainer: "srjn45 <srajanpathak45@gmail.com>"
+description: "A Claude-Code-style AI agent for your terminal"
+homepage: "https://github.com/srjn45/spaiSH"
+license: "Apache-2.0"
+
+contents:
+  - src: dist/spai
+    dst: /usr/bin/spai
+
+  - src: completions/spai.bash
+    dst: /usr/share/bash-completion/completions/spai
+
+  - src: completions/spai.zsh
+    dst: /usr/share/zsh/site-functions/_spai
+
+  - src: completions/spai.fish
+    dst: /usr/share/fish/vendor_completions.d/spai.fish
+
+  - src: docs/spai.1
+    dst: /usr/share/man/man1/spai.1
