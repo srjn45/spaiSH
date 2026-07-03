@@ -226,7 +226,9 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 			}
 			results = append(results, ai.ToolResult{ToolUseID: tc.ID, Content: content, IsError: isErr})
 
-			if isErr || verbose {
+			if tc.Name == "todo_write" && !isErr {
+				send(ctx, ch, protocol.Response{Type: "todo", Content: out})
+			} else if isErr || verbose {
 				send(ctx, ch, protocol.Response{Type: "output", Content: content + "\n"})
 			}
 		}
@@ -253,6 +255,8 @@ func classify(tc ai.ToolCall) (permissions.Tier, string) {
 		sub, args := tools.GitCall(tc.Input)
 		display := strings.TrimSpace("git " + sub + " " + strings.Join(args, " "))
 		return tools.GitTier(sub, args), display
+	case "todo_write":
+		return permissions.TierRead, "updating task list"
 	default:
 		// MCP tools (mcp__<server>__<tool>) are external; gate them at Write
 		// tier so they require confirmation in manual mode.
