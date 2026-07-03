@@ -119,8 +119,8 @@ func TestGlobAndGrep(t *testing.T) {
 func TestRegistrySpecs(t *testing.T) {
 	r := DefaultRegistry()
 	specs := r.Specs()
-	if len(specs) != 11 {
-		t.Errorf("expected 11 default tools, got %d", len(specs))
+	if len(specs) != 12 {
+		t.Errorf("expected 12 default tools, got %d", len(specs))
 	}
 	if _, ok := r.Get("bash"); !ok {
 		t.Error("bash tool missing from default registry")
