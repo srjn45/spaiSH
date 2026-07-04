@@ -36,21 +36,16 @@ The core agent is built and working:
 - [x] Distribution & polish — shell completions (`completions/spai.{bash,zsh,fish}`),
       a `man` page (`docs/spai.1`), a Homebrew formula (`Formula/spai.rb`), and
       `.deb`/`.rpm` packaging via `nfpm` in `release.yml`
+- [x] Prompt caching & performance — Anthropic `cache_control: ephemeral`
+      breakpoints (system prompt, tools, conversation history), real
+      input/output/cache-read/cache-creation token counts surfaced in `/cost`
+      (replacing the chars/4 estimate), and a per-`Agent`-instance cache for
+      the `SPAI.md` project-context disk lookup
 
 ## Next
 
-### Prompt caching & performance
-
-- [x] Anthropic prompt caching — `cache_control: ephemeral` breakpoints on the
-      system prompt, tool definitions, and the growing conversation history,
-      so repeated agent-loop iterations and multi-turn sessions reuse cached
-      tokens instead of reprocessing the full context on every call
-- [x] Real token usage & cache-hit reporting — capture actual input/output/
-      cache-read/cache-creation token counts from the API response (replacing
-      the current chars/4 estimate) and surface them, including cache
-      savings, in `/cost`
-- [ ] Cache the per-session `SPAI.md` project-context lookup on the `Agent`
-      instead of re-reading it from disk on every turn
+Every seeded "Next" item is now shipped — this section is intentionally empty
+until new directions are chosen.
 
 ## Recently completed
 
@@ -77,6 +72,12 @@ The core agent is built and working:
 - [x] `man` page — `docs/spai.1`, installed by `install.sh`
 - [x] Homebrew formula — `Formula/spai.rb` + `brew tap`/`install` instructions
 - [x] `.deb`/`.rpm` packaging via `nfpm`, wired into `release.yml`
+- [x] Anthropic prompt caching — `cache_control: ephemeral` breakpoints on the
+      system prompt, tool definitions, and conversation history
+- [x] Real token usage & cache-hit reporting in `/cost`, replacing the
+      chars/4 estimate
+- [x] Per-session `SPAI.md` project-context caching on the `Agent`, avoiding
+      a disk re-read on every turn
 
 ## Parked ideas
 
