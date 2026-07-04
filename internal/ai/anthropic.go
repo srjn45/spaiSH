@@ -32,6 +32,23 @@ func NewAnthropicProvider(apiKey, model string) *AnthropicProvider {
 	}
 }
 
+// NewAnthropicProviderWithBase creates a provider that sends requests to baseURL
+// instead of the default Anthropic endpoint. Useful for directing traffic to a
+// test HTTP server.
+func NewAnthropicProviderWithBase(apiKey, model, baseURL string) *AnthropicProvider {
+	if model == "" {
+		model = DefaultAnthropicModel
+	}
+	return &AnthropicProvider{
+		apiKey: apiKey,
+		model:  model,
+		client: anthropic.NewClient(
+			option.WithAPIKey(apiKey),
+			option.WithBaseURL(baseURL),
+		),
+	}
+}
+
 func (p *AnthropicProvider) Name() string    { return "anthropic" }
 func (p *AnthropicProvider) Available() bool { return p.apiKey != "" }
 
@@ -54,11 +71,32 @@ func (p *AnthropicProvider) Stream(ctx context.Context, req Request) (<-chan Eve
 			OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
 		},
 	}
+
+	// Cache the system prompt — it rarely changes within a session.
 	if req.System != "" {
-		params.System = []anthropic.TextBlockParam{{Text: req.System}}
+		params.System = []anthropic.TextBlockParam{{
+			Text:         req.System,
+			CacheControl: anthropic.NewCacheControlEphemeralParam(),
+		}}
 	}
+
+	// Cache the tool list via a breakpoint on the last tool definition.
 	if len(req.Tools) > 0 {
-		params.Tools = toAnthropicTools(req.Tools)
+		tools := toAnthropicTools(req.Tools)
+		if tools[len(tools)-1].OfTool != nil {
+			tools[len(tools)-1].OfTool.CacheControl = anthropic.NewCacheControlEphemeralParam()
+		}
+		params.Tools = tools
+	}
+
+	// Cache the conversation history by marking the penultimate message's last
+	// content block. Anthropic caches everything up to and including a
+	// breakpoint, so this lets each new turn reuse all prior context.
+	if len(params.Messages) >= 2 {
+		m := &params.Messages[len(params.Messages)-2]
+		if len(m.Content) > 0 {
+			addCacheControlToLastBlock(&m.Content[len(m.Content)-1])
+		}
 	}
 
 	stream := p.client.Messages.NewStreaming(ctx, params)
@@ -99,10 +137,36 @@ func (p *AnthropicProvider) Stream(ctx context.Context, req Request) (<-chan Eve
 				}}
 			}
 		}
-		ch <- Event{Type: "done", Stop: string(acc.StopReason)}
+		ch <- Event{
+			Type: "done",
+			Stop: string(acc.StopReason),
+			Usage: &Usage{
+				InputTokens:         int(acc.Usage.InputTokens),
+				OutputTokens:        int(acc.Usage.OutputTokens),
+				CacheCreationTokens: int(acc.Usage.CacheCreationInputTokens),
+				CacheReadTokens:     int(acc.Usage.CacheReadInputTokens),
+			},
+		}
 	}()
 
 	return ch, nil
+}
+
+// addCacheControlToLastBlock sets an ephemeral cache breakpoint on a content
+// block union. Only the variants produced by toAnthropicMessages are handled;
+// the others cannot appear in practice.
+func addCacheControlToLastBlock(b *anthropic.ContentBlockParamUnion) {
+	cc := anthropic.NewCacheControlEphemeralParam()
+	switch {
+	case b.OfText != nil:
+		b.OfText.CacheControl = cc
+	case b.OfToolResult != nil:
+		b.OfToolResult.CacheControl = cc
+	case b.OfToolUse != nil:
+		b.OfToolUse.CacheControl = cc
+	case b.OfImage != nil:
+		b.OfImage.CacheControl = cc
+	}
 }
 
 // toAnthropicMessages converts neutral messages into SDK MessageParams.

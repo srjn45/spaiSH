@@ -74,6 +74,20 @@ func (r Rate) Cost(inputTokens, outputTokens int) float64 {
 	return in + out
 }
 
+// CostWithCache estimates the dollar cost of a request that used Anthropic
+// prompt caching. Cache writes (5-minute TTL) cost 1.25× the base input price;
+// cache reads cost 0.1×. Local rates always cost $0.
+func (r Rate) CostWithCache(inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens int) float64 {
+	if r.Local {
+		return 0
+	}
+	in := float64(inputTokens) / tokensPerUnit * r.Input
+	out := float64(outputTokens) / tokensPerUnit * r.Output
+	cacheWrite := float64(cacheCreationTokens) / tokensPerUnit * r.Input * 1.25
+	cacheRead := float64(cacheReadTokens) / tokensPerUnit * r.Input * 0.1
+	return in + out + cacheWrite + cacheRead
+}
+
 // EstimateCost is a convenience wrapper: it looks up the model and returns the
 // estimated cost for the token counts plus whether a pricing entry was found.
 func EstimateCost(model string, inputTokens, outputTokens int) (float64, bool) {

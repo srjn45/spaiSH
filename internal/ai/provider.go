@@ -59,18 +59,29 @@ type Request struct {
 	Model    string // optional override; providers fall back to their configured model
 }
 
+// Usage holds API-reported token counts from a provider response. Fields are
+// zero when the provider does not report them (non-Anthropic providers, old
+// code paths). Check InputTokens or OutputTokens > 0 before using.
+type Usage struct {
+	InputTokens         int
+	OutputTokens        int
+	CacheCreationTokens int // tokens written to the prompt cache this turn
+	CacheReadTokens     int // tokens read from the prompt cache this turn
+}
+
 // Event is one item in a streamed provider response.
 //
 //	Type "text"      → Text holds a content delta
 //	Type "tool_call" → ToolCall holds a complete tool invocation
 //	Type "error"     → Err holds the message
-//	Type "done"      → Stop holds the stop reason; terminal event
+//	Type "done"      → Stop holds the stop reason; terminal event; Usage may be non-nil
 type Event struct {
 	Type     string
 	Text     string
 	ToolCall *ToolCall
 	Err      string
 	Stop     string
+	Usage    *Usage // non-nil only on "done" events from providers that report real usage
 }
 
 // Provider is the interface for any AI model backend.

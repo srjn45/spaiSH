@@ -100,3 +100,34 @@ func TestEstimateCost(t *testing.T) {
 		t.Fatal("unknown model should return ok=false")
 	}
 }
+
+func TestCostWithCache(t *testing.T) {
+	opus, _ := Lookup("claude-opus-4-8") // Input=$5, Output=$25 per 1M
+
+	// 1M input + 1M output + 1M cache write + 1M cache read
+	// = 5 + 25 + 5*1.25 + 5*0.1 = 5 + 25 + 6.25 + 0.5 = 36.75
+	got := opus.CostWithCache(1_000_000, 1_000_000, 1_000_000, 1_000_000)
+	if math.Abs(got-36.75) > 1e-9 {
+		t.Errorf("CostWithCache = %v, want 36.75", got)
+	}
+
+	// No cache tokens → same as Cost()
+	withoutCache := opus.CostWithCache(500_000, 0, 0, 0)
+	baseline := opus.Cost(500_000, 0)
+	if math.Abs(withoutCache-baseline) > 1e-9 {
+		t.Errorf("CostWithCache with no cache tokens = %v, want %v (same as Cost)", withoutCache, baseline)
+	}
+
+	// Local model always costs $0.
+	local := Rate{Model: "llama", Local: true}
+	if got := local.CostWithCache(1_000_000, 1_000_000, 1_000_000, 1_000_000); got != 0 {
+		t.Errorf("local CostWithCache = %v, want 0", got)
+	}
+
+	// Only cache read, no other tokens.
+	// 1M cache read @ 0.1× input ($5) = $0.50
+	readOnly := opus.CostWithCache(0, 0, 0, 1_000_000)
+	if math.Abs(readOnly-0.5) > 1e-9 {
+		t.Errorf("cache-read-only CostWithCache = %v, want 0.5", readOnly)
+	}
+}

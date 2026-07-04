@@ -209,3 +209,149 @@ func TestAnthropicAvailableAndName(t *testing.T) {
 		t.Error("expected Available() = false without an API key")
 	}
 }
+
+// minimalSSEResponse returns a complete text/event-stream body for the Anthropic
+// streaming API. inputTokens/outputTokens/cacheCreation/cacheRead populate the
+// usage fields so tests can verify they are correctly extracted.
+func minimalSSEResponse(text string, inputTokens, outputTokens, cacheCreation, cacheRead int) string {
+	return fmt.Sprintf(
+		"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_test\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-opus-4-8\",\"stop_reason\":null,\"usage\":{\"input_tokens\":%d,\"output_tokens\":0,\"cache_creation_input_tokens\":%d,\"cache_read_input_tokens\":%d}}}\n\n"+
+			"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"+
+			"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":%q}}\n\n"+
+			"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"+
+			"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":%d}}\n\n"+
+			"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+		inputTokens, cacheCreation, cacheRead, text, outputTokens,
+	)
+}
+
+// TestAnthropicCacheControlBreakpoints verifies that Stream sets cache_control
+// on the system block, the last tool, and the penultimate message's last block.
+func TestAnthropicCacheControlBreakpoints(t *testing.T) {
+	type reqBody struct {
+		System []struct {
+			Text         string `json:"text"`
+			CacheControl *struct {
+				Type string `json:"type"`
+			} `json:"cache_control"`
+		} `json:"system"`
+		Tools []struct {
+			Name         string `json:"name"`
+			CacheControl *struct {
+				Type string `json:"type"`
+			} `json:"cache_control"`
+		} `json:"tools"`
+		Messages []struct {
+			Content []struct {
+				Type         string `json:"type"`
+				Text         string `json:"text,omitempty"`
+				CacheControl *struct {
+					Type string `json:"type"`
+				} `json:"cache_control"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+
+	var captured reqBody
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&captured)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, minimalSSEResponse("ok", 10, 5, 0, 0))
+	}))
+	defer srv.Close()
+
+	p := ai.NewAnthropicProviderWithBase("sk-test", "claude-opus-4-8", srv.URL)
+	ch, err := p.Stream(context.Background(), ai.Request{
+		System: "You are a helpful assistant.",
+		Messages: []ai.Message{
+			{Role: "user", Content: "first turn"},
+			{Role: "assistant", Content: "first response"},
+			{Role: "user", Content: "second turn"},
+		},
+		Tools: []ai.ToolSpec{
+			{Name: "alpha", Description: "tool alpha", Schema: map[string]any{"type": "object"}},
+			{Name: "beta", Description: "tool beta", Schema: map[string]any{"type": "object"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	drain(t, ch) // consume events
+
+	// System prompt cache breakpoint.
+	if len(captured.System) == 0 {
+		t.Fatal("no system blocks in request")
+	}
+	if captured.System[0].CacheControl == nil || captured.System[0].CacheControl.Type != "ephemeral" {
+		t.Errorf("system[0] cache_control = %v, want {type:ephemeral}", captured.System[0].CacheControl)
+	}
+
+	// Last tool cache breakpoint.
+	if len(captured.Tools) < 2 {
+		t.Fatalf("expected 2 tools, got %d", len(captured.Tools))
+	}
+	if captured.Tools[0].CacheControl != nil {
+		t.Errorf("tools[0] should not have cache_control, got %v", captured.Tools[0].CacheControl)
+	}
+	if captured.Tools[1].CacheControl == nil || captured.Tools[1].CacheControl.Type != "ephemeral" {
+		t.Errorf("tools[1] (last) cache_control = %v, want {type:ephemeral}", captured.Tools[1].CacheControl)
+	}
+
+	// Penultimate message last content block cache breakpoint.
+	if len(captured.Messages) < 2 {
+		t.Fatalf("expected ≥2 messages, got %d", len(captured.Messages))
+	}
+	penultimate := captured.Messages[len(captured.Messages)-2]
+	if len(penultimate.Content) == 0 {
+		t.Fatal("penultimate message has no content blocks")
+	}
+	lastBlock := penultimate.Content[len(penultimate.Content)-1]
+	if lastBlock.CacheControl == nil || lastBlock.CacheControl.Type != "ephemeral" {
+		t.Errorf("penultimate message last block cache_control = %v, want {type:ephemeral}", lastBlock.CacheControl)
+	}
+}
+
+// TestAnthropicUsageExtraction verifies that the "done" event carries real
+// token counts from the accumulator's Usage field.
+func TestAnthropicUsageExtraction(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, minimalSSEResponse("hello", 100, 42, 50, 20))
+	}))
+	defer srv.Close()
+
+	p := ai.NewAnthropicProviderWithBase("sk-test", "claude-opus-4-8", srv.URL)
+	ch, err := p.Stream(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	var doneEv *ai.Event
+	for ev := range ch {
+		if ev.Type == "done" {
+			cp := ev
+			doneEv = &cp
+		}
+	}
+	if doneEv == nil {
+		t.Fatal("no 'done' event received")
+	}
+	u := doneEv.Usage
+	if u == nil {
+		t.Fatal("done event Usage is nil")
+	}
+	if u.InputTokens != 100 {
+		t.Errorf("InputTokens = %d, want 100", u.InputTokens)
+	}
+	if u.OutputTokens != 42 {
+		t.Errorf("OutputTokens = %d, want 42", u.OutputTokens)
+	}
+	if u.CacheCreationTokens != 50 {
+		t.Errorf("CacheCreationTokens = %d, want 50", u.CacheCreationTokens)
+	}
+	if u.CacheReadTokens != 20 {
+		t.Errorf("CacheReadTokens = %d, want 20", u.CacheReadTokens)
+	}
+}
