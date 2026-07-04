@@ -41,12 +41,11 @@ The core agent is built and working:
 
 ### Prompt caching & performance
 
-- [ ] Anthropic prompt caching — `cache_control: ephemeral` breakpoints on the
-      system prompt (+ `SPAI.md`), tool definitions, and the growing
-      conversation history, so repeated agent-loop iterations and multi-turn
-      sessions reuse cached tokens instead of reprocessing the full context
-      on every call
-- [ ] Real token usage & cache-hit reporting — capture actual input/output/
+- [x] Anthropic prompt caching — `cache_control: ephemeral` breakpoints on the
+      system prompt, tool definitions, and the growing conversation history,
+      so repeated agent-loop iterations and multi-turn sessions reuse cached
+      tokens instead of reprocessing the full context on every call
+- [x] Real token usage & cache-hit reporting — capture actual input/output/
       cache-read/cache-creation token counts from the API response (replacing
       the current chars/4 estimate) and surface them, including cache
       savings, in `/cost`
