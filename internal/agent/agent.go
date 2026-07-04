@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"spaish/internal/ai"
 	"spaish/internal/permissions"
@@ -44,6 +45,27 @@ type Agent struct {
 	config    Config
 	confirmFn ConfirmFunc
 	registry  *tools.Registry
+
+	// projectContext caches the SPAI.md lookup (loadProjectContext) for this
+	// Agent instance so it is read from disk once per session rather than on
+	// every turn. It is populated lazily and guarded by projectContextOnce,
+	// which also makes the compute-once safe if loop() goroutines ever overlap.
+	// The cache is per-Agent-instance: each delegated sub-agent (built with its
+	// own Config.WorkingDir in runDelegate) gets a fresh, independently-scoped
+	// cache. Tradeoff: a SPAI.md edited mid-session is only picked up after
+	// restarting spai — acceptable for a simple per-process cache (no watching
+	// or invalidation by design).
+	projectContextOnce sync.Once
+	projectContext     string
+}
+
+// loadProjectContextCached returns the SPAI.md project context for this Agent,
+// computing it from disk at most once per instance and caching the result.
+func (a *Agent) loadProjectContextCached() string {
+	a.projectContextOnce.Do(func() {
+		a.projectContext = loadProjectContext(a.config.WorkingDir)
+	})
+	return a.projectContext
 }
 
 // New creates an Agent with the default tool registry.
@@ -98,7 +120,7 @@ func (a *Agent) Run(ctx context.Context, req *protocol.AgentRequest, sess *sessi
 
 func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *session.Session, ch chan<- protocol.Response) {
 	system := systemPrompt + "\n\nWorking directory: " + a.config.WorkingDir
-	if spaiCtx := loadProjectContext(a.config.WorkingDir); spaiCtx != "" {
+	if spaiCtx := a.loadProjectContextCached(); spaiCtx != "" {
 		system += "\n\n## Project instructions (SPAI.md)\n" + spaiCtx
 	}
 	if a.config.GitBranch != "" {
