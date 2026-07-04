@@ -12,12 +12,29 @@ import (
 
 const maxMessages = 20
 
+// ActualUsage holds cumulative API-reported token counts for a session,
+// accumulated from real provider responses. Zero values indicate that no
+// provider has reported usage yet (e.g. an old session or a non-Anthropic
+// provider). Check HasData before using.
+type ActualUsage struct {
+	InputTokens         int `json:"input_tokens,omitempty"`
+	OutputTokens        int `json:"output_tokens,omitempty"`
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"` // tokens written to the prompt cache
+	CacheReadTokens     int `json:"cache_read_tokens,omitempty"`     // tokens served from the prompt cache
+}
+
+// HasData reports whether any real API usage has been recorded.
+func (u ActualUsage) HasData() bool {
+	return u.InputTokens > 0 || u.OutputTokens > 0
+}
+
 // Session holds the in-memory state for a session. Persisted to sessions/<id>/cache.json.
 type Session struct {
-	Messages  []ai.Message `json:"messages"`
-	Summary   string       `json:"summary,omitempty"`
-	UpdatedAt time.Time    `json:"updated_at,omitempty"`
-	dir       string       // unexported: sessions/<id>/ directory
+	Messages    []ai.Message `json:"messages"`
+	Summary     string       `json:"summary,omitempty"`
+	UpdatedAt   time.Time    `json:"updated_at,omitempty"`
+	ActualUsage ActualUsage  `json:"actual_usage,omitempty"`
+	dir         string       // unexported: sessions/<id>/ directory
 }
 
 // SessionsDir returns the directory where per-session subdirectories are stored.
@@ -184,6 +201,15 @@ func (s *Session) EstimateUsage() Usage {
 		}
 	}
 	return Usage{PromptTokens: promptChars / 4, GeneratedTokens: genChars / 4}
+}
+
+// AddActualUsage accumulates API-reported token counts into the session.
+// The updated total is persisted when SaveCache is next called.
+func (s *Session) AddActualUsage(u ai.Usage) {
+	s.ActualUsage.InputTokens += u.InputTokens
+	s.ActualUsage.OutputTokens += u.OutputTokens
+	s.ActualUsage.CacheCreationTokens += u.CacheCreationTokens
+	s.ActualUsage.CacheReadTokens += u.CacheReadTokens
 }
 
 // CompactOlder stores summary as the session summary and keeps only the most

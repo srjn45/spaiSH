@@ -316,36 +316,82 @@ func (r *REPL) printMCP() {
 	}
 }
 
-// printCost reports the active model, the estimated token footprint of the
-// current session, and the estimated dollar cost using the pricing table.
-// Estimates come from the session's ~4-chars-per-token heuristic; local and
-// unknown models degrade gracefully.
+// costReport holds the formatted lines produced by buildCostReport.
+type costReport struct {
+	tokens    string
+	cost      string
+	footer    string
+	isActual  bool // true when sourced from API-reported usage, false when estimated
+}
+
+// buildCostReport computes the token and cost lines for the /cost display.
+// When the session has API-reported usage it uses that; otherwise it falls back
+// to the ~4-chars-per-token estimate. Separated from printCost for testability.
+func buildCostReport(sess *session.Session, rate pricing.Rate, known bool, model string) costReport {
+	if sess.ActualUsage.HasData() {
+		au := sess.ActualUsage
+		c := rate.CostWithCache(au.InputTokens, au.OutputTokens, au.CacheCreationTokens, au.CacheReadTokens)
+		total := au.InputTokens + au.OutputTokens
+		tokens := fmt.Sprintf("tokens: %s  (input %s / output %s / cache-write %s / cache-read %s)",
+			commafy(total), commafy(au.InputTokens), commafy(au.OutputTokens),
+			commafy(au.CacheCreationTokens), commafy(au.CacheReadTokens))
+		var cost string
+		switch {
+		case known && rate.Local:
+			cost = fmt.Sprintf("cost:   %s", dim("$0.00 (local)"))
+		case known:
+			cost = fmt.Sprintf("cost:   $%.4f  %s", c,
+				dim(fmt.Sprintf("($%.0f/$%.0f per 1M in/out, cache 1.25×/0.1×)", rate.Input, rate.Output)))
+		default:
+			cost = fmt.Sprintf("cost:   %s", dim("unknown pricing for "+model))
+		}
+		return costReport{
+			tokens:   tokens,
+			cost:     cost,
+			footer:   dim("actual usage — API-reported token counts."),
+			isActual: true,
+		}
+	}
+
+	// Fallback: estimate from message content.
+	u := sess.EstimateUsage()
+	c := rate.Cost(u.PromptTokens, u.GeneratedTokens)
+	tokens := fmt.Sprintf("tokens: ~%s  (prompt ~%s / generated ~%s)",
+		commafy(u.TotalTokens()), commafy(u.PromptTokens), commafy(u.GeneratedTokens))
+	var cost string
+	switch {
+	case known && rate.Local:
+		cost = fmt.Sprintf("cost:   %s", dim("$0.00 (local)"))
+	case known:
+		cost = fmt.Sprintf("cost:   ~$%.4f  %s", c,
+			dim(fmt.Sprintf("($%.0f/$%.0f per 1M in/out)", rate.Input, rate.Output)))
+	default:
+		cost = fmt.Sprintf("cost:   %s", dim("unknown pricing for "+model))
+	}
+	return costReport{
+		tokens:   tokens,
+		cost:     cost,
+		footer:   dim("estimate only — based on a ~4-chars-per-token heuristic."),
+		isActual: false,
+	}
+}
+
+// printCost reports the active model, token footprint, and dollar cost for the
+// current session. Uses API-reported token counts when available; falls back to
+// the ~4-chars-per-token estimate for old sessions and non-Anthropic providers.
 func (r *REPL) printCost() {
 	model := r.app.ActiveModel()
-
 	sess, err := session.LoadByID(r.sessionID)
 	if err != nil {
 		fmt.Printf("%s %v\n", red("✗"), err)
 		return
 	}
-	usage := sess.EstimateUsage()
-
 	rate, known := pricing.Lookup(model)
-	cost := rate.Cost(usage.PromptTokens, usage.GeneratedTokens)
-
+	rep := buildCostReport(sess, rate, known, model)
 	fmt.Printf("model:  %s\n", bold(r.app.ProviderInfo()))
-	fmt.Printf("tokens: ~%s  (prompt ~%s / generated ~%s)\n",
-		commafy(usage.TotalTokens()), commafy(usage.PromptTokens), commafy(usage.GeneratedTokens))
-	switch {
-	case known && rate.Local:
-		fmt.Printf("cost:   %s\n", dim("$0.00 (local)"))
-	case known:
-		fmt.Printf("cost:   ~$%.4f  %s\n", cost,
-			dim(fmt.Sprintf("($%.0f/$%.0f per 1M in/out)", rate.Input, rate.Output)))
-	default:
-		fmt.Printf("cost:   %s\n", dim("unknown pricing for "+model))
-	}
-	fmt.Println(dim("estimate only — based on a ~4-chars-per-token heuristic."))
+	fmt.Println(rep.tokens)
+	fmt.Println(rep.cost)
+	fmt.Println(rep.footer)
 }
 
 func (r *REPL) printHistory() {

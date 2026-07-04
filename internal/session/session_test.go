@@ -446,3 +446,64 @@ func TestEstimateUsage(t *testing.T) {
 		t.Errorf("TotalTokens %d != ApproxTokens %d", u.TotalTokens(), s.ApproxTokens())
 	}
 }
+
+// ---------- ActualUsage ----------
+
+func TestActualUsageHasData(t *testing.T) {
+	var u session.ActualUsage
+	if u.HasData() {
+		t.Error("zero ActualUsage should not HasData")
+	}
+	u.InputTokens = 1
+	if !u.HasData() {
+		t.Error("ActualUsage with InputTokens > 0 should HasData")
+	}
+	u = session.ActualUsage{OutputTokens: 1}
+	if !u.HasData() {
+		t.Error("ActualUsage with OutputTokens > 0 should HasData")
+	}
+}
+
+func TestAddActualUsageAccumulates(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	s, _ := session.LoadByID("usageacc")
+
+	s.AddActualUsage(ai.Usage{InputTokens: 100, OutputTokens: 50, CacheCreationTokens: 20, CacheReadTokens: 10})
+	s.AddActualUsage(ai.Usage{InputTokens: 200, OutputTokens: 30, CacheCreationTokens: 5, CacheReadTokens: 15})
+
+	if s.ActualUsage.InputTokens != 300 {
+		t.Errorf("InputTokens = %d, want 300", s.ActualUsage.InputTokens)
+	}
+	if s.ActualUsage.OutputTokens != 80 {
+		t.Errorf("OutputTokens = %d, want 80", s.ActualUsage.OutputTokens)
+	}
+	if s.ActualUsage.CacheCreationTokens != 25 {
+		t.Errorf("CacheCreationTokens = %d, want 25", s.ActualUsage.CacheCreationTokens)
+	}
+	if s.ActualUsage.CacheReadTokens != 25 {
+		t.Errorf("CacheReadTokens = %d, want 25", s.ActualUsage.CacheReadTokens)
+	}
+}
+
+func TestAddActualUsagePersistsViaCache(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	s, _ := session.LoadByID("usagepersist")
+	s.AddActualUsage(ai.Usage{InputTokens: 500, OutputTokens: 200, CacheCreationTokens: 80, CacheReadTokens: 40})
+	if err := s.SaveCache(); err != nil {
+		t.Fatalf("SaveCache: %v", err)
+	}
+
+	s2, err := session.LoadByID("usagepersist")
+	if err != nil {
+		t.Fatalf("LoadByID: %v", err)
+	}
+	if !s2.ActualUsage.HasData() {
+		t.Fatal("expected HasData() after reload")
+	}
+	if s2.ActualUsage.InputTokens != 500 {
+		t.Errorf("InputTokens after reload = %d, want 500", s2.ActualUsage.InputTokens)
+	}
+	if s2.ActualUsage.CacheCreationTokens != 80 {
+		t.Errorf("CacheCreationTokens after reload = %d, want 80", s2.ActualUsage.CacheCreationTokens)
+	}
+}

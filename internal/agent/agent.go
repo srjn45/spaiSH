@@ -126,6 +126,15 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 	}
 	toolSpecs := a.registry.Specs()
 
+	// Accumulate real API-reported usage across all iterations of this Run()
+	// call. Deferred so it runs on every exit path.
+	var totalUsage ai.Usage
+	defer func() {
+		if totalUsage.InputTokens > 0 || totalUsage.OutputTokens > 0 {
+			sess.AddActualUsage(totalUsage)
+		}
+	}()
+
 	for iter := 0; iter < maxIter; iter++ {
 		evCh, err := a.provider.Stream(ctx, ai.Request{System: system, Messages: messages, Tools: toolSpecs})
 		if err != nil {
@@ -136,6 +145,7 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 
 		var text strings.Builder
 		var toolCalls []ai.ToolCall
+		var iterUsage *ai.Usage
 		for ev := range evCh {
 			switch ev.Type {
 			case "text":
@@ -149,7 +159,15 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 				send(ctx, ch, protocol.Response{Type: "error", Content: ev.Err})
 				send(ctx, ch, protocol.Response{Type: "done"})
 				return
+			case "done":
+				iterUsage = ev.Usage
 			}
+		}
+		if iterUsage != nil {
+			totalUsage.InputTokens += iterUsage.InputTokens
+			totalUsage.OutputTokens += iterUsage.OutputTokens
+			totalUsage.CacheCreationTokens += iterUsage.CacheCreationTokens
+			totalUsage.CacheReadTokens += iterUsage.CacheReadTokens
 		}
 
 		messages = append(messages, ai.Message{Role: "assistant", Content: text.String(), ToolCalls: toolCalls})

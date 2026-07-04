@@ -7,6 +7,10 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"spaish/internal/ai"
+	"spaish/internal/pricing"
+	"spaish/internal/session"
 )
 
 // suffixes flattens a [][]rune completion result into strings for comparison.
@@ -181,6 +185,76 @@ func TestLevenshtein(t *testing.T) {
 		if got := levenshtein(tc.a, tc.b); got != tc.want {
 			t.Errorf("levenshtein(%q,%q) = %d, want %d", tc.a, tc.b, got, tc.want)
 		}
+	}
+}
+
+// ---------- buildCostReport ----------
+
+func TestBuildCostReportPrefersActualUsage(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	s, _ := session.LoadByID("costest")
+	s.AddActualUsage(ai.Usage{InputTokens: 1000, OutputTokens: 500, CacheCreationTokens: 200, CacheReadTokens: 100})
+	s.AddExchange("hello", "world")
+
+	rate, known := pricing.Lookup("claude-opus-4-8")
+	rep := buildCostReport(s, rate, known, "claude-opus-4-8")
+	if !rep.isActual {
+		t.Error("expected isActual=true when ActualUsage has data")
+	}
+	if !strings.Contains(rep.tokens, "input") {
+		t.Errorf("tokens line should mention 'input', got: %q", rep.tokens)
+	}
+	if !strings.Contains(rep.tokens, "cache-write") {
+		t.Errorf("tokens line should mention 'cache-write', got: %q", rep.tokens)
+	}
+	if strings.Contains(rep.footer, "estimate") {
+		t.Errorf("footer should not say 'estimate' when using actual usage, got: %q", rep.footer)
+	}
+	if !strings.Contains(rep.footer, "actual") {
+		t.Errorf("footer should say 'actual' for real usage, got: %q", rep.footer)
+	}
+}
+
+func TestBuildCostReportFallsBackToEstimate(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	s, _ := session.LoadByID("costfallback")
+	// No actual usage recorded — only text messages.
+	s.AddExchange("what is go?", "Go is a statically typed language.")
+
+	rate, known := pricing.Lookup("claude-opus-4-8")
+	rep := buildCostReport(s, rate, known, "claude-opus-4-8")
+	if rep.isActual {
+		t.Error("expected isActual=false when no actual usage recorded")
+	}
+	if !strings.Contains(rep.tokens, "prompt") {
+		t.Errorf("tokens line should mention 'prompt', got: %q", rep.tokens)
+	}
+	if !strings.Contains(rep.footer, "estimate") {
+		t.Errorf("footer should say 'estimate' when using heuristic, got: %q", rep.footer)
+	}
+}
+
+func TestBuildCostReportLocalModel(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	s, _ := session.LoadByID("costlocal")
+	s.AddActualUsage(ai.Usage{InputTokens: 1000, OutputTokens: 500})
+
+	rate, known := pricing.Lookup("ollama:llama3")
+	rep := buildCostReport(s, rate, known, "ollama:llama3")
+	if !strings.Contains(rep.cost, "$0.00") {
+		t.Errorf("local model cost line should contain '$0.00', got: %q", rep.cost)
+	}
+}
+
+func TestBuildCostReportUnknownModel(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	s, _ := session.LoadByID("costunk")
+	s.AddActualUsage(ai.Usage{InputTokens: 1000, OutputTokens: 500})
+
+	rate, known := pricing.Lookup("gpt-99-unknown")
+	rep := buildCostReport(s, rate, known, "gpt-99-unknown")
+	if !strings.Contains(rep.cost, "unknown pricing") {
+		t.Errorf("unknown model cost line should mention 'unknown pricing', got: %q", rep.cost)
 	}
 }
 
