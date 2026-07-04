@@ -39,8 +39,19 @@ The core agent is built and working:
 
 ## Next
 
-Every seeded "Next" item is now shipped — this section is intentionally empty
-until new directions are chosen.
+### Prompt caching & performance
+
+- [ ] Anthropic prompt caching — `cache_control: ephemeral` breakpoints on the
+      system prompt (+ `SPAI.md`), tool definitions, and the growing
+      conversation history, so repeated agent-loop iterations and multi-turn
+      sessions reuse cached tokens instead of reprocessing the full context
+      on every call
+- [ ] Real token usage & cache-hit reporting — capture actual input/output/
+      cache-read/cache-creation token counts from the API response (replacing
+      the current chars/4 estimate) and surface them, including cache
+      savings, in `/cost`
+- [ ] Cache the per-session `SPAI.md` project-context lookup on the `Agent`
+      instead of re-reading it from disk on every turn
 
 ## Recently completed
 
