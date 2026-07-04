@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -502,6 +504,42 @@ func TestAgentReadToolRunsSilentlyInManualMode(t *testing.T) {
 	run(t, p, agent.Config{}, alwaysDeny, reg, "search")
 	if calls != 1 {
 		t.Errorf("read-tier tool should run without confirm, ran %d times", calls)
+	}
+}
+
+// TestAgentCachesProjectContextAcrossTurns verifies the SPAI.md lookup is done
+// once per Agent instance: the content injected on the first turn is still
+// present on a second turn even after the file is deleted between turns, which
+// can only hold if the on-disk read was cached rather than repeated per turn.
+func TestAgentCachesProjectContextAcrossTurns(t *testing.T) {
+	dir := t.TempDir()
+	spaiMD := filepath.Join(dir, "SPAI.md")
+	if err := os.WriteFile(spaiMD, []byte("CACHED PROJECT RULES"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// A .git entry stops loadProjectContext's upward walk at dir.
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &scriptedProvider{} // each Stream call returns a bare end_turn
+	a := agent.NewWithRegistry(p, agent.Config{WorkingDir: dir}, alwaysApprove, tools.NewRegistry())
+	sess := newSession(t)
+
+	// First turn: the file exists and its content must reach the system prompt.
+	collect(a.Run(context.Background(), &protocol.AgentRequest{Query: "one"}, sess))
+	if !strings.Contains(p.lastReq.System, "CACHED PROJECT RULES") {
+		t.Fatalf("first turn: SPAI.md content missing from system prompt: %q", p.lastReq.System)
+	}
+
+	// Delete the file, then run a second turn. Were the lookup repeated every
+	// turn, the content would now be gone; the per-instance cache keeps it.
+	if err := os.Remove(spaiMD); err != nil {
+		t.Fatal(err)
+	}
+	collect(a.Run(context.Background(), &protocol.AgentRequest{Query: "two"}, sess))
+	if !strings.Contains(p.lastReq.System, "CACHED PROJECT RULES") {
+		t.Errorf("second turn: cached SPAI.md content missing after file deletion: %q", p.lastReq.System)
 	}
 }
 
