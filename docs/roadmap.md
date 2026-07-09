@@ -41,19 +41,15 @@ The core agent is built and working:
       input/output/cache-read/cache-creation token counts surfaced in `/cost`
       (replacing the chars/4 estimate), and a per-`Agent`-instance cache for
       the `SPAI.md` project-context disk lookup
+- [x] Reliability & test coverage — `handleSlash` dispatch and the REPL print
+      helpers in `internal/cli/slash.go` (46.7% → 59.3% package coverage),
+      and provider streaming edge cases + shared helpers in `internal/ai`
+      (74.6% → 89.4% package coverage)
 
 ## Next
 
-### Reliability & test coverage
-
-- [x] REPL slash-command coverage — `handleSlash` dispatch (routing, unknown-
-      command suggestions, exit signaling) and the print helpers
-      (`printModels`, `printMCP`, `printHistory`, `printCommandHelp`,
-      `printCost`) in `internal/cli/slash.go`
-- [ ] Provider streaming edge cases in `internal/ai` — malformed/partial SSE
-      events, mid-stream provider errors, empty tool-call arguments, and the
-      untested `CompleteText`/`streamToTextCh`/`splitSystem`/`ProviderError`
-      helpers shared across the Anthropic/OpenAI/Ollama providers
+Every seeded "Next" item is now shipped — this section is intentionally empty
+until new directions are chosen.
 
 ## Recently completed
 
@@ -86,6 +82,10 @@ The core agent is built and working:
       chars/4 estimate
 - [x] Per-session `SPAI.md` project-context caching on the `Agent`, avoiding
       a disk re-read on every turn
+- [x] REPL slash-command test coverage — `handleSlash` dispatch and print
+      helpers in `internal/cli/slash.go`
+- [x] Provider streaming edge cases and shared-helper test coverage in
+      `internal/ai` (Anthropic/OpenAI/Ollama)
 
 ## Parked ideas
 
