@@ -197,6 +197,289 @@ func TestOllamaInlineToolCallFallback(t *testing.T) {
 	}
 }
 
+// TestOpenAIMalformedSSE confirms a malformed data line is skipped rather than
+// aborting the stream: the following well-formed delta still yields its text.
+func TestOpenAIMalformedSSE(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, `data: {not valid json`)
+		fmt.Fprintln(w, `garbage line without data prefix`)
+		fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`)
+		fmt.Fprintln(w, `data: [DONE]`)
+	}))
+	defer srv.Close()
+
+	p := ai.NewOpenAIProvider(srv.URL, "k", "m")
+	ch, err := p.Stream(context.Background(), ai.Request{Messages: []ai.Message{{Role: "user", Content: "hi"}}})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	var text strings.Builder
+	for _, ev := range drain(t, ch) {
+		if ev.Type == "text" {
+			text.WriteString(ev.Text)
+		}
+	}
+	if text.String() != "ok" {
+		t.Errorf("got %q, want %q (malformed line should be skipped)", text.String(), "ok")
+	}
+}
+
+// TestOpenAIEmptyToolArgs pins the current behavior for a tool call whose
+// arguments never arrive (empty) or arrive as malformed JSON: the provider does
+// not panic and surfaces the raw (possibly empty/invalid) Input verbatim,
+// leaving JSON validation to the caller.
+func TestOpenAIEmptyToolArgs(t *testing.T) {
+	t.Run("missing arguments", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintln(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"bash"}}]}}]}`)
+			fmt.Fprintln(w, `data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`)
+			fmt.Fprintln(w, `data: [DONE]`)
+		}))
+		defer srv.Close()
+
+		p := ai.NewOpenAIProvider(srv.URL, "k", "m")
+		ch, err := p.Stream(context.Background(), ai.Request{
+			Messages: []ai.Message{{Role: "user", Content: "go"}},
+			Tools:    []ai.ToolSpec{{Name: "bash", Schema: map[string]any{"type": "object"}}},
+		})
+		if err != nil {
+			t.Fatalf("Stream: %v", err)
+		}
+		var got *ai.ToolCall
+		for _, ev := range drain(t, ch) {
+			if ev.Type == "tool_call" {
+				got = ev.ToolCall
+			}
+		}
+		if got == nil {
+			t.Fatal("expected a tool_call event")
+		}
+		if got.Name != "bash" {
+			t.Errorf("name = %q, want bash", got.Name)
+		}
+		if len(got.Input) != 0 {
+			t.Errorf("Input = %q, want empty for missing arguments", got.Input)
+		}
+	})
+
+	t.Run("malformed arguments preserved verbatim", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintln(w, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"bash","arguments":"{bad"}}]}}]}`)
+			fmt.Fprintln(w, `data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`)
+			fmt.Fprintln(w, `data: [DONE]`)
+		}))
+		defer srv.Close()
+
+		p := ai.NewOpenAIProvider(srv.URL, "k", "m")
+		ch, err := p.Stream(context.Background(), ai.Request{
+			Messages: []ai.Message{{Role: "user", Content: "go"}},
+			Tools:    []ai.ToolSpec{{Name: "bash", Schema: map[string]any{"type": "object"}}},
+		})
+		if err != nil {
+			t.Fatalf("Stream: %v", err)
+		}
+		var got *ai.ToolCall
+		for _, ev := range drain(t, ch) {
+			if ev.Type == "tool_call" {
+				got = ev.ToolCall
+			}
+		}
+		if got == nil {
+			t.Fatal("expected a tool_call event")
+		}
+		if string(got.Input) != "{bad" {
+			t.Errorf("Input = %q, want raw %q preserved", got.Input, "{bad")
+		}
+		if json.Valid(got.Input) {
+			t.Error("expected malformed Input to be invalid JSON (pinning current behavior)")
+		}
+	})
+}
+
+// TestOpenAINon200 confirms a non-200 status is surfaced as a Stream error
+// before any events flow.
+func TestOpenAINon200(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	p := ai.NewOpenAIProvider(srv.URL, "k", "m")
+	_, err := p.Stream(context.Background(), ai.Request{Messages: []ai.Message{{Role: "user", Content: "hi"}}})
+	if err == nil {
+		t.Fatal("expected an error for non-200 status")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("error = %v, want it to mention HTTP 500", err)
+	}
+}
+
+// TestOpenAICompleteDelegation exercises Complete → streamToTextCh → splitSystem
+// for the OpenAI provider. The leading system message must be split out-of-band.
+func TestOpenAICompleteDelegation(t *testing.T) {
+	var sawSystem bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Role string `json:"role"`
+			} `json:"messages"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		for _, m := range body.Messages {
+			if m.Role == "system" {
+				sawSystem = true
+			}
+		}
+		fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"hi "}}]}`)
+		fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"there"}}]}`)
+		fmt.Fprintln(w, `data: [DONE]`)
+	}))
+	defer srv.Close()
+
+	p := ai.NewOpenAIProvider(srv.URL, "k", "m")
+	ch, err := p.Complete(context.Background(), []ai.Message{
+		{Role: "system", Content: "be terse"},
+		{Role: "user", Content: "hi"},
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	var got strings.Builder
+	for s := range ch {
+		got.WriteString(s)
+	}
+	if got.String() != "hi there" {
+		t.Errorf("got %q, want %q", got.String(), "hi there")
+	}
+	if !sawSystem {
+		t.Error("system message was not forwarded to the provider")
+	}
+}
+
+// TestOllamaMalformedLine confirms an unparseable JSON line is skipped and later
+// good lines still stream through.
+func TestOllamaMalformedLine(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			w.WriteHeader(http.StatusOK)
+		case "/api/chat":
+			fmt.Fprintln(w, `{not json}`)
+			fmt.Fprintln(w, `{"message":{"role":"assistant","content":"done"},"done":true}`)
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder")
+	ch, err := p.Stream(context.Background(), ai.Request{Messages: []ai.Message{{Role: "user", Content: "hi"}}})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	var text strings.Builder
+	for _, ev := range drain(t, ch) {
+		if ev.Type == "text" {
+			text.WriteString(ev.Text)
+		}
+	}
+	if text.String() != "done" {
+		t.Errorf("got %q, want %q (malformed line should be skipped)", text.String(), "done")
+	}
+}
+
+// TestOllamaNon200 confirms a non-200 status from /api/chat is surfaced as a
+// Stream error.
+func TestOllamaNon200(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/chat" {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder")
+	_, err := p.Stream(context.Background(), ai.Request{Messages: []ai.Message{{Role: "user", Content: "hi"}}})
+	if err == nil {
+		t.Fatal("expected an error for non-200 status")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("error = %v, want it to mention HTTP 500", err)
+	}
+}
+
+// TestOllamaEmptyToolArgs pins behavior for a native tool call carrying an empty
+// arguments object.
+func TestOllamaEmptyToolArgs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			w.WriteHeader(http.StatusOK)
+		case "/api/chat":
+			fmt.Fprintln(w, `{"message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"now","arguments":{}}}]},"done":true}`)
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder")
+	ch, err := p.Stream(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: "user", Content: "time?"}},
+		Tools:    []ai.ToolSpec{{Name: "now", Schema: map[string]any{"type": "object"}}},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	var got *ai.ToolCall
+	for _, ev := range drain(t, ch) {
+		if ev.Type == "tool_call" {
+			got = ev.ToolCall
+		}
+	}
+	if got == nil || got.Name != "now" {
+		t.Fatalf("expected 'now' tool_call, got %+v", got)
+	}
+	if string(got.Input) != "{}" {
+		t.Errorf("Input = %q, want %q for empty arguments object", got.Input, "{}")
+	}
+}
+
+// TestOllamaCompleteDelegation exercises Complete → streamToTextCh → splitSystem
+// for the Ollama provider.
+func TestOllamaCompleteDelegation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/tags":
+			w.WriteHeader(http.StatusOK)
+		case "/api/chat":
+			fmt.Fprintln(w, `{"message":{"role":"assistant","content":"hi "},"done":false}`)
+			fmt.Fprintln(w, `{"message":{"role":"assistant","content":"there"},"done":true}`)
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder")
+	ch, err := p.Complete(context.Background(), []ai.Message{
+		{Role: "system", Content: "be terse"},
+		{Role: "user", Content: "hi"},
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	var got strings.Builder
+	for s := range ch {
+		got.WriteString(s)
+	}
+	if got.String() != "hi there" {
+		t.Errorf("got %q, want %q", got.String(), "hi there")
+	}
+}
+
 func TestAnthropicAvailableAndName(t *testing.T) {
 	p := ai.NewAnthropicProvider("sk-test", "")
 	if !p.Available() {
@@ -308,6 +591,78 @@ func TestAnthropicCacheControlBreakpoints(t *testing.T) {
 	lastBlock := penultimate.Content[len(penultimate.Content)-1]
 	if lastBlock.CacheControl == nil || lastBlock.CacheControl.Type != "ephemeral" {
 		t.Errorf("penultimate message last block cache_control = %v, want {type:ephemeral}", lastBlock.CacheControl)
+	}
+}
+
+// TestAnthropicCompleteDelegation verifies Complete drives Stream via
+// streamToTextCh, splitting the leading system message out-of-band and
+// concatenating the streamed text deltas.
+func TestAnthropicCompleteDelegation(t *testing.T) {
+	var gotSystem string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			System []struct {
+				Text string `json:"text"`
+			} `json:"system"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		if len(body.System) > 0 {
+			gotSystem = body.System[0].Text
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, minimalSSEResponse("hello world", 10, 5, 0, 0))
+	}))
+	defer srv.Close()
+
+	p := ai.NewAnthropicProviderWithBase("sk-test", "claude-opus-4-8", srv.URL)
+	ch, err := p.Complete(context.Background(), []ai.Message{
+		{Role: "system", Content: "be terse"},
+		{Role: "user", Content: "hi"},
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	var got strings.Builder
+	for s := range ch {
+		got.WriteString(s)
+	}
+	if got.String() != "hello world" {
+		t.Errorf("got %q, want %q", got.String(), "hello world")
+	}
+	if gotSystem != "be terse" {
+		t.Errorf("system forwarded = %q, want %q (splitSystem should hoist it)", gotSystem, "be terse")
+	}
+}
+
+// TestAnthropicStreamError confirms a non-200 API response is surfaced as an
+// "error" event rather than a panic or a silent empty stream.
+func TestAnthropicStreamError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// 400 is non-retryable, so the SDK surfaces it promptly.
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"type":"error","error":{"type":"invalid_request_error","message":"bad request"}}`)
+	}))
+	defer srv.Close()
+
+	p := ai.NewAnthropicProviderWithBase("sk-test", "claude-opus-4-8", srv.URL)
+	ch, err := p.Stream(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	var sawError bool
+	for _, ev := range drain(t, ch) {
+		if ev.Type == "error" {
+			sawError = true
+			if ev.Err == "" {
+				t.Error("error event has an empty message")
+			}
+		}
+	}
+	if !sawError {
+		t.Error("expected an 'error' event for a 400 response")
 	}
 }
 
