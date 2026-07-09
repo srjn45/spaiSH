@@ -44,8 +44,16 @@ The core agent is built and working:
 
 ## Next
 
-Every seeded "Next" item is now shipped — this section is intentionally empty
-until new directions are chosen.
+### Reliability & test coverage
+
+- [ ] REPL slash-command coverage — `handleSlash` dispatch (routing, unknown-
+      command suggestions, exit signaling) and the previously-untested print
+      helpers (`printModels`, `printMCP`, `printHistory`, `printCommandHelp`)
+      in `internal/cli/slash.go`, currently at 0% coverage
+- [ ] Provider streaming edge cases in `internal/ai` — malformed/partial SSE
+      events, mid-stream provider errors, empty tool-call arguments, and the
+      untested `CompleteText`/`streamToTextCh`/`splitSystem`/`ProviderError`
+      helpers shared across the Anthropic/OpenAI/Ollama providers
 
 ## Recently completed
 
