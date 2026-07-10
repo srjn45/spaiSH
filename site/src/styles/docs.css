@@ -1,0 +1,11 @@
+/* Tune Starlight's accent to spai's teal so docs match the landing page. */
+:root {
+  --sl-color-accent-low: #0b2b28;
+  --sl-color-accent: #0d9488;
+  --sl-color-accent-high: #99f6e4;
+}
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #082420;
+  --sl-color-accent: #14b8a6;
+  --sl-color-accent-high: #99f6e4;
+}
