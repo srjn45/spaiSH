@@ -71,7 +71,7 @@ func RenderResponse(resp protocol.Response) {
 			fmt.Print(resp.Content)
 		}
 	case "output":
-		fmt.Print(dim(resp.Content))
+		fmt.Print(dim(capOutputLines(resp.Content, isTerminal(os.Stdout))))
 	case "todo":
 		fmt.Print(renderTodoList(resp.Content, isTerminal(os.Stdout)))
 	case "error":
@@ -128,7 +128,7 @@ func (r *Renderer) Render(resp protocol.Response) {
 		}
 	case "output":
 		r.Flush()
-		fmt.Print(r.style(resp.Content, dim))
+		fmt.Print(r.style(capOutputLines(resp.Content, r.tty), dim))
 	case "todo":
 		r.Flush()
 		fmt.Print(renderTodoList(resp.Content, r.tty))
@@ -197,6 +197,50 @@ func renderTodoList(content string, tty bool) string {
 		}
 		sb.WriteByte('\n')
 	}
+	return sb.String()
+}
+
+// maxDisplayLines caps how many lines of a single tool result are printed to an
+// interactive terminal. 40 is roughly a half-screen on a default 24-line
+// terminal at 2x scrollback comfort: enough head+tail context to see what a
+// command produced and how it ended, but small enough that one dense grep or
+// git diff can't scroll the useful conversation off screen. This is a
+// display-time concern only; the underlying data (and the tool layer's 16KB
+// byte cap) are unchanged.
+const maxDisplayLines = 40
+
+// capOutputLines shortens long tool output for terminal display, showing the
+// first maxDisplayLines/2 lines, a dim "… N lines truncated …" marker, then the
+// last maxDisplayLines/2 lines. Content at or under the cap is returned
+// byte-for-byte unchanged, so this is a no-op for the common case.
+//
+// When tty is false (piped output) capping is skipped entirely: piped output is
+// typically consumed by another program or saved to a file that wants the full
+// content, matching the renderer's broader convention of keeping non-TTY output
+// clean and complete. The marker is styled only on a TTY, mirroring
+// renderTodoList.
+func capOutputLines(content string, tty bool) string {
+	if !tty {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	if len(lines) <= maxDisplayLines {
+		return content
+	}
+	half := maxDisplayLines / 2
+	head := lines[:half]
+	tail := lines[len(lines)-half:]
+	truncated := len(lines) - 2*half
+	marker := fmt.Sprintf("… %d lines truncated …", truncated)
+	if tty {
+		marker = dim(marker)
+	}
+	var sb strings.Builder
+	sb.WriteString(strings.Join(head, "\n"))
+	sb.WriteByte('\n')
+	sb.WriteString(marker)
+	sb.WriteByte('\n')
+	sb.WriteString(strings.Join(tail, "\n"))
 	return sb.String()
 }
 
