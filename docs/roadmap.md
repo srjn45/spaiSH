@@ -45,19 +45,15 @@ The core agent is built and working:
       helpers in `internal/cli/slash.go` (46.7% → 59.3% package coverage),
       and provider streaming edge cases + shared helpers in `internal/ai`
       (74.6% → 89.4% package coverage)
+- [x] REPL/UX polish — a `/sessions` REPL command listing recent sessions
+      (pinned/current/shell markers, message count, relative age) without
+      leaving the interactive session, and a `capOutputLines` cap (40 lines)
+      on long `output`-type tool responses in the TTY renderer
 
 ## Next
 
-### REPL/UX polish
-
-- [ ] `/sessions` REPL command — list recent sessions (id, pinned/shell
-      markers, message count, relative age) without leaving the interactive
-      session, reusing `session.ListSessions()`/`session.ReadPinned()` (the
-      same data the top-level `spai sessions` subcommand already shows)
-- [ ] Terminal-friendly long tool-output display — cap the number of lines
-      shown for a single `output`-type response in the REPL renderer (e.g.
-      first/last N lines with a "N lines truncated" note), separate from the
-      existing 16KB byte-level truncation already applied at the tool layer
+Every seeded "Next" item is now shipped — this section is intentionally empty
+until new directions are chosen.
 
 ## Recently completed
 
@@ -94,6 +90,10 @@ The core agent is built and working:
       helpers in `internal/cli/slash.go`
 - [x] Provider streaming edge cases and shared-helper test coverage in
       `internal/ai` (Anthropic/OpenAI/Ollama)
+- [x] `/sessions` REPL command — list recent sessions without leaving the
+      interactive session, reusing `session.ListSessions()`/`ReadPinned()`
+- [x] Terminal-friendly long tool-output display — `capOutputLines` line cap
+      in the REPL renderer, separate from the tool layer's byte-level cap
 
 ## Parked ideas
 
