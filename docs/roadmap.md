@@ -48,8 +48,16 @@ The core agent is built and working:
 
 ## Next
 
-Every seeded "Next" item is now shipped — this section is intentionally empty
-until new directions are chosen.
+### REPL/UX polish
+
+- [ ] `/sessions` REPL command — list recent sessions (id, pinned/shell
+      markers, message count, relative age) without leaving the interactive
+      session, reusing `session.ListSessions()`/`session.ReadPinned()` (the
+      same data the top-level `spai sessions` subcommand already shows)
+- [ ] Terminal-friendly long tool-output display — cap the number of lines
+      shown for a single `output`-type response in the REPL renderer (e.g.
+      first/last N lines with a "N lines truncated" note), separate from the
+      existing 16KB byte-level truncation already applied at the tool layer
 
 ## Recently completed
 
