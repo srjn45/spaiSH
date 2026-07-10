@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -31,6 +32,7 @@ func completer() *readline.PrefixCompleter {
 		readline.PcItem("/clear"),
 		readline.PcItem("/compact"),
 		readline.PcItem("/history"),
+		readline.PcItem("/sessions"),
 		readline.PcItem("/init"),
 		readline.PcItem("/quit"),
 		readline.PcItem("/exit"),
@@ -185,6 +187,9 @@ func (r *REPL) handleSlash(line string) bool {
 	case "/history":
 		r.printHistory()
 
+	case "/sessions":
+		r.printSessions()
+
 	case "/init":
 		r.handleInit()
 
@@ -318,10 +323,10 @@ func (r *REPL) printMCP() {
 
 // costReport holds the formatted lines produced by buildCostReport.
 type costReport struct {
-	tokens    string
-	cost      string
-	footer    string
-	isActual  bool // true when sourced from API-reported usage, false when estimated
+	tokens   string
+	cost     string
+	footer   string
+	isActual bool // true when sourced from API-reported usage, false when estimated
 }
 
 // buildCostReport computes the token and cost lines for the /cost display.
@@ -412,6 +417,96 @@ func (r *REPL) printHistory() {
 	fmt.Println(content)
 }
 
+// printSessions lists recent sessions, mirroring the top-level `spai sessions`
+// output. Because the REPL runs inside a live session, it additionally marks the
+// currently active session (r.sessionID) with an arrow and a "(current)" label —
+// a distinction the top-level command, which runs outside any session, can't make.
+func (r *REPL) printSessions() {
+	list, err := session.ListSessions()
+	if err != nil {
+		fmt.Printf("%s %v\n", red("✗"), err)
+		return
+	}
+
+	pinned := session.ReadPinned()
+	shellID := os.Getenv("SPAI_SESSION_ID")
+
+	fmt.Println()
+	fmt.Println("  Sessions")
+	fmt.Println("  ────────────────────────────────────")
+
+	if len(list) == 0 {
+		fmt.Println(dim("  (no sessions yet)"))
+		fmt.Println()
+		return
+	}
+
+	for _, s := range list {
+		current := s.ID == r.sessionID
+
+		// Marker column: the active session wins (→), else pinned (*), else blank.
+		marker := " "
+		switch {
+		case current:
+			marker = "→"
+		case s.ID == pinned:
+			marker = "*"
+		}
+
+		// Label column: pinned takes precedence, then current, then shell.
+		label := "        "
+		switch {
+		case s.ID == pinned:
+			label = "(pinned)"
+		case current:
+			label = "(current)"
+		case isShellSession(s.ID, shellID):
+			label = "(shell) "
+		}
+
+		msgs := fmt.Sprintf("%d msgs", s.MsgCount)
+		age := formatRelativeTime(s.ModTime)
+
+		fmt.Printf("%s %-12s %s  %-8s  %s\n", marker, s.ID, label, msgs, age)
+	}
+	fmt.Println()
+}
+
+// formatRelativeTime renders a coarse "just now" / "5m ago" / "3h ago" / "2d ago"
+// age. It mirrors the private helper of the same name in cmd/spai (a main package
+// we can't import); the ~15 lines are duplicated deliberately.
+func formatRelativeTime(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
+}
+
+// isShellSession reports whether id is the shell-launched session: either it
+// matches $SPAI_SESSION_ID or it is a PID-based (all-numeric) id. Mirrors the
+// private cmd/spai helper of the same name.
+func isShellSession(id, shellID string) bool {
+	if shellID != "" && id == shellID {
+		return true
+	}
+	if len(id) == 0 {
+		return false
+	}
+	for _, c := range id {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // printCommandHelp prints the detailed help for a single slash command, as
 // requested via `/help <command>`. The leading slash is optional.
 func (r *REPL) printCommandHelp(name string) {
@@ -430,17 +525,18 @@ func (r *REPL) printCommandHelp(name string) {
 // are the canonical slash commands; keep it in sync with handleSlash and
 // helpText (slash_test.go asserts this).
 var commandDetails = map[string]string{
-	"/help":    "show the command list, or `/help <command>` for details on one command.",
-	"/mode":    "show the execution mode, or set it: manual (confirm every tool), auto (run unattended), plan (draft a plan, run nothing). Shift-Tab cycles it.",
-	"/model":   "show configured providers/models, or switch: `/model ollama`, `/model openai:gpt-4o`.",
-	"/tools":   "list the tools available to the agent this session.",
-	"/mcp":     "connect to the configured MCP servers and show their status and discovered tools.",
-	"/cost":    "show the estimated token usage and dollar cost for this session.",
-	"/clear":   "wipe the session's conversation context, keeping the session open.",
-	"/compact": "summarise the conversation so far and compact it to reclaim context.",
-	"/history": "print the full transcript recorded for this session.",
-	"/init":    "scaffold a SPAI.md project-context file in the current working directory.",
-	"/quit":    "leave the session (aliases: /exit, /q; Ctrl+D also exits).",
+	"/help":     "show the command list, or `/help <command>` for details on one command.",
+	"/mode":     "show the execution mode, or set it: manual (confirm every tool), auto (run unattended), plan (draft a plan, run nothing). Shift-Tab cycles it.",
+	"/model":    "show configured providers/models, or switch: `/model ollama`, `/model openai:gpt-4o`.",
+	"/tools":    "list the tools available to the agent this session.",
+	"/mcp":      "connect to the configured MCP servers and show their status and discovered tools.",
+	"/cost":     "show the estimated token usage and dollar cost for this session.",
+	"/clear":    "wipe the session's conversation context, keeping the session open.",
+	"/compact":  "summarise the conversation so far and compact it to reclaim context.",
+	"/history":  "print the full transcript recorded for this session.",
+	"/sessions": "list recent sessions, marking the current, pinned, and shell sessions.",
+	"/init":     "scaffold a SPAI.md project-context file in the current working directory.",
+	"/quit":     "leave the session (aliases: /exit, /q; Ctrl+D also exits).",
 }
 
 const helpText = `
@@ -454,6 +550,7 @@ Commands:
   /clear             wipe the session's conversation context
   /compact           summarise and compact the session to reclaim context
   /history           print the session transcript
+  /sessions          list recent sessions (current, pinned, shell)
   /init              scaffold a SPAI.md project-context file here
   /quit, /exit       leave the session
 

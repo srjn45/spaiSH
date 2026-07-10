@@ -8,6 +8,7 @@ import (
 
 	"spaish/internal/agent"
 	"spaish/internal/app"
+	"spaish/internal/session"
 )
 
 // captureStdout is defined in render_test.go and reused here to observe the
@@ -252,6 +253,85 @@ func TestPrintHistoryLoadError(t *testing.T) {
 	out := captureStdout(t, r.printHistory)
 	if !strings.Contains(out, "✗") {
 		t.Errorf("printHistory should surface the load error, got %q", out)
+	}
+}
+
+// ---------- printSessions ----------
+
+// seedSession creates a session directory under the active XDG_DATA_HOME with a
+// cache.json holding msgCount messages, so session.ListSessions surfaces it.
+func seedSession(t *testing.T, id string, msgCount int) {
+	t.Helper()
+	dir := filepath.Join(os.Getenv("XDG_DATA_HOME"), "spaish", "sessions", id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	msgs := make([]string, msgCount)
+	for i := range msgs {
+		msgs[i] = "{}"
+	}
+	cache := `{"messages":[` + strings.Join(msgs, ",") + `]}`
+	if err := os.WriteFile(filepath.Join(dir, "cache.json"), []byte(cache), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPrintSessionsEmpty(t *testing.T) {
+	r := newREPLWithApp(t, "sessempty", "")
+	out := captureStdout(t, r.printSessions)
+	if !strings.Contains(out, "Sessions") {
+		t.Errorf("printSessions should print the header, got %q", out)
+	}
+	if !strings.Contains(out, "no sessions yet") {
+		t.Errorf("printSessions should report the empty state, got %q", out)
+	}
+}
+
+func TestPrintSessionsListsAndMarks(t *testing.T) {
+	// r.sessionID is the active session; "pinnedone" is pinned; "12345" is a
+	// PID-style shell session matching SPAI_SESSION_ID.
+	r := newREPLWithApp(t, "current-sess", "")
+	seedSession(t, "current-sess", 2)
+	seedSession(t, "pinnedone", 5)
+	seedSession(t, "12345", 1)
+
+	if err := session.WritePinned("pinnedone"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SPAI_SESSION_ID", "12345")
+
+	out := captureStdout(t, r.printSessions)
+
+	for _, want := range []string{"current-sess", "pinnedone", "12345"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("printSessions should list session %q, got %q", want, out)
+		}
+	}
+	if !strings.Contains(out, "(current)") {
+		t.Errorf("printSessions should mark the active session (current), got %q", out)
+	}
+	if !strings.Contains(out, "(pinned)") {
+		t.Errorf("printSessions should mark the pinned session (pinned), got %q", out)
+	}
+	if !strings.Contains(out, "(shell)") {
+		t.Errorf("printSessions should mark the shell session (shell), got %q", out)
+	}
+	if !strings.Contains(out, "5 msgs") {
+		t.Errorf("printSessions should show message counts, got %q", out)
+	}
+}
+
+// TestHandleSlashSessions verifies dispatch routes /sessions to printSessions.
+func TestHandleSlashSessions(t *testing.T) {
+	r := newREPLWithApp(t, "dispatch-sess", "")
+	seedSession(t, "dispatch-sess", 1)
+	var exit bool
+	out := captureStdout(t, func() { exit = r.handleSlash("/sessions") })
+	if exit {
+		t.Error("/sessions should not signal exit")
+	}
+	if !strings.Contains(out, "Sessions") || !strings.Contains(out, "dispatch-sess") {
+		t.Errorf("/sessions should print the sessions listing, got %q", out)
 	}
 }
 
