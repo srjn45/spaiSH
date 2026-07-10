@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#111a22"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <path d="M120 250 L175 305 L120 360" fill="none" stroke="#2dd4bf" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="205" y="360" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="150" font-weight="700" fill="#e6edf3">spai</text>
+  <rect x="700" y="228" width="52" height="128" rx="6" fill="#2dd4bf"/>
+  <text x="122" y="452" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="42" fill="#c9d1d9">Your terminal, in plain language.</text>
+  <text x="122" y="512" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="30" fill="#8b949e">A Claude-Code-style AI agent for your shell — permission-gated, one binary.</text>
+</svg>

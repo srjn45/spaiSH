@@ -1,0 +1,248 @@
+---
+import '../styles/landing.css';
+const base = import.meta.env.BASE_URL; // '/spaiSH/'
+const gh = 'https://github.com/srjn45/spaiSH';
+
+const values = [
+  ['🗣️', 'Plain language', 'Describe the goal. spai plans, reads files, runs commands, and edits code to get there.'],
+  ['🔒', 'Permission-gated', 'A tiered gate sits in front of anything that changes your system. Commands are parsed, not string-matched.'],
+  ['🔌', 'Any model', 'Anthropic Claude, any OpenAI-compatible endpoint, or fully local via Ollama. Switch mid-session.'],
+  ['📦', 'One binary', 'A single small Go binary. No daemon, no socket, no background service, no database.'],
+];
+
+const tiers = [
+  ['#3fb950', 'read', 'read_file · glob · grep — runs freely'],
+  ['#d29922', 'write', 'write_file · edit_file — confirmed in manual mode'],
+  ['#f85149', 'elevated', 'sudo & destructive — always asks, session-scoped'],
+];
+
+const tools = ['bash', 'read_file', 'write_file', 'edit_file', 'glob', 'grep', 'list_dir'];
+
+const features = [
+  ['Interactive session', 'guides/interactive-session'],
+  ['Permissions & modes', 'guides/permissions'],
+  ['MCP servers', 'guides/mcp'],
+  ['Local models (Ollama)', 'guides/local-models'],
+  ['Shell integration', 'guides/shell-integration'],
+  ['Sessions & resume', 'guides/interactive-session'],
+  ['Architecture', 'concepts/architecture'],
+  ['Configuration', 'reference/configuration'],
+];
+
+const providers = [
+  ['🧠', 'Anthropic', 'Native Claude support — the default. Point at a model and export your key as an env var.'],
+  ['🔗', 'OpenAI-compatible', 'Any endpoint that speaks the OpenAI API — hosted or self-run. Just set the base URL.'],
+  ['🖥️', 'Ollama (local)', 'Full privacy mode. Pull and switch local models from the terminal; never leave the machine.'],
+];
+---
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>spai — your terminal, in plain language</title>
+    <meta name="description" content="A Claude-Code-style AI agent for your terminal. Ask in plain language — spai reads files, runs commands, and edits code, behind a permission gate. Works with remote and local models. One Go binary." />
+    <link rel="icon" href={`${base}favicon.svg`} />
+    <meta property="og:title" content="spai — your terminal, in plain language" />
+    <meta property="og:description" content="A Claude-Code-style AI agent for your terminal, behind a permission gate. One Go binary." />
+    <meta property="og:image" content="https://srjn45.github.io/spaiSH/og-image.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <!-- ===== nav ===== -->
+    <nav class="nav">
+      <div class="wrap nav-inner">
+        <a class="brand" href={base}><span class="caret">▸</span> spai</a>
+        <div class="nav-links">
+          <a class="hide-sm" href="#features">Features</a>
+          <a class="hide-sm" href="#dashboard">How it works</a>
+          <a href={`${base}start/what-is-spai/`}>Docs</a>
+          <a class="hide-sm" href={gh}>GitHub</a>
+          <a class="nav-cta" href={`${base}start/install/`}>Install</a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ===== hero ===== -->
+    <header class="section hero">
+      <div class="wrap">
+        <span class="pill"><span class="dot"></span> Experimental · open source · Apache-2.0</span>
+        <h1>Your terminal,<br /><span class="grad">in plain language.</span></h1>
+        <p class="lede">spai is a Claude-Code-style AI agent for your shell. Ask for what you want — it
+          reads files, runs commands, and edits code on your behalf, with a permission gate in front
+          of anything that changes your system.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href={`${base}start/quickstart/`}>Get started →</a>
+          <a class="btn btn-ghost" href={gh}>★ Star on GitHub</a>
+        </div>
+
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+            <span class="tt">zsh — spai</span>
+          </div>
+<pre class="terminal-body"><span class="prompt">$</span> <span class="cmd">spai "nginx keeps returning 502, find and fix it"</span>
+  <span class="tool">▶ read_file</span> /var/log/nginx/error.log
+  <span class="tool">▶ read_file</span> /etc/nginx/nginx.conf
+  Found an upstream timeout: proxy_read_timeout is 30s
+  but the backend needs ~90s.
+
+  <span class="gate">▶ [Write] edit</span> /etc/nginx/nginx.conf
+    <span class="del">proxy_read_timeout 30s</span>  →  <span class="ins">proxy_read_timeout 90s</span>
+  <span class="gate">Allow? [y/N]:</span> <span class="cursor"></span></pre>
+        </div>
+      </div>
+    </header>
+
+    <!-- ===== value props ===== -->
+    <section class="section" id="features">
+      <div class="wrap">
+        <p class="eyebrow">Why spai</p>
+        <h2>An agent that respects your machine</h2>
+        <p class="lede">Everything Claude Code does for your codebase — brought to the whole shell,
+          on your terms.</p>
+        <div class="grid cols-4" style="margin-top:28px">
+          {values.map(([ico, title, body]) => (
+            <div class="card">
+              <span class="ico">{ico}</span>
+              <h3>{title}</h3>
+              <p>{body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== dashboard ===== -->
+    <section class="section" id="dashboard">
+      <div class="wrap">
+        <p class="eyebrow">How it works</p>
+        <h2>A native tool-calling loop, fully gated</h2>
+        <p class="lede">The model streams text and tool calls; each call is classified for risk,
+          gated, executed, and fed back — until the task is done.</p>
+
+        <div class="dash" style="margin-top:28px">
+          <!-- permission tiers -->
+          <div class="panel span-8">
+            <div class="panel-title">
+              <h3>Permission gate</h3>
+              <span class="badge live">command-parsed</span>
+            </div>
+            <ul class="tierlist">
+              {tiers.map(([color, name, desc]) => (
+                <li>
+                  <span class="tier-dot" style={`background:${color}`}></span>
+                  <span class="tier-name">{name}</span>
+                  <span class="tier-desc">{desc}</span>
+                </li>
+              ))}
+            </ul>
+            <p class="metric-sub" style="margin-top:16px">Safety is decided by <em>parsing</em> each
+              shell command — so <code>rm -rf</code>, <code>rm --recursive</code>, and
+              <code>a && rm -rf b</code> are all caught, while <code>echo "rm -rf"</code> is not.</p>
+          </div>
+
+          <!-- tools count -->
+          <div class="panel span-4">
+            <div class="panel-title"><h3>Built-in tools</h3></div>
+            <div class="metric"><span class="num">7</span><span class="unit">native tools</span></div>
+            <div class="chips" style="margin-top:14px">
+              {tools.map((t) => (<span class="chip"><span class="k">{t}</span></span>))}
+            </div>
+          </div>
+
+          <!-- modes -->
+          <div class="panel span-6">
+            <div class="panel-title"><h3>Execution modes</h3></div>
+            <div class="modebar">
+              <div class="mode active"><span class="k">manual</span><span class="v">asks before changes</span></div>
+              <div class="mode"><span class="k">auto</span><span class="v">runs everything</span></div>
+              <div class="mode"><span class="k">plan</span><span class="v">proposes, never runs</span></div>
+            </div>
+            <p class="metric-sub" style="margin-top:14px"><code>Shift-Tab</code> cycles the mode
+              mid-session; <code>/mode</code> sets it explicitly.</p>
+          </div>
+
+          <!-- routing / cost -->
+          <div class="panel span-6">
+            <div class="panel-title"><h3>Session & routing</h3></div>
+            <div class="bars">
+              <div class="bar-row"><span class="lbl">Remote</span><span class="bar-track"><span class="bar-fill" style="width:100%"></span></span><span class="val">Claude / OpenAI</span></div>
+              <div class="bar-row"><span class="lbl">Local</span><span class="bar-track"><span class="bar-fill" style="width:70%"></span></span><span class="val">Ollama</span></div>
+              <div class="bar-row"><span class="lbl">Context</span><span class="bar-track"><span class="bar-fill" style="width:45%"></span></span><span class="val">auto-compact</span></div>
+            </div>
+            <p class="metric-sub" style="margin-top:14px">Sessions are file-backed and compact
+              themselves as they grow. <code>/cost</code> shows token usage; <code>spai resume</code>
+              reopens the last one.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== providers ===== -->
+    <section class="section">
+      <div class="wrap">
+        <p class="eyebrow">Bring your own model</p>
+        <h2>Remote or fully local</h2>
+        <div class="providers" style="margin-top:26px">
+          {providers.map(([ico, title, body]) => (
+            <div class="card provider">
+              <span class="ico">{ico}</span>
+              <h3>{title}</h3>
+              <p>{body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== features / docs links ===== -->
+    <section class="section">
+      <div class="wrap">
+        <p class="eyebrow">Explore</p>
+        <h2>Everything spai does</h2>
+        <div class="linkgrid" style="margin-top:24px">
+          {features.map(([label, slug]) => (
+            <a href={`${base}${slug}/`}>{label}<span class="arw">→</span></a>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== quickstart ===== -->
+    <section class="section">
+      <div class="wrap">
+        <p class="eyebrow">Quickstart</p>
+        <h2>Up in under a minute</h2>
+<pre class="qs-pre"><span class="muted"># clone & install (downloads a prebuilt binary, or builds from source)</span>
+git clone https://github.com/srjn45/spaiSH && cd spaiSH
+./install.sh
+
+<span class="muted"># pick a provider, set the model, run a live connection test</span>
+spai init
+
+<span class="muted"># ask for anything</span>
+spai <span class="prompt">"summarise what changed in the last 5 commits"</span>
+spai                    <span class="muted"># interactive multi-turn session</span>
+git log | spai <span class="prompt">"anything worrying here?"</span></pre>
+        <div class="cta-row" style="justify-content:flex-start;margin-top:24px">
+          <a class="btn btn-primary" href={`${base}start/install/`}>Install guide →</a>
+          <a class="btn btn-ghost" href={`${base}start/what-is-spai/`}>Read the docs</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== footer ===== -->
+    <footer class="foot">
+      <div class="wrap">
+        <a href={`${base}start/what-is-spai/`}>Docs</a> ·
+        <a href={gh}>GitHub</a> ·
+        <a href={`${base}reference/legal/`}>Legal</a> ·
+        Apache-2.0
+        <p class="fine">spai / spaiSH is an independent, experimental open-source project — not
+          affiliated with, endorsed by, or sponsored by Anthropic, OpenAI, Ollama, or any other
+          model vendor. All product names are trademarks of their respective owners. Use at your own
+          risk; you are responsible for API costs and for any command you approve.</p>
+      </div>
+    </footer>
+  </body>
+</html>
