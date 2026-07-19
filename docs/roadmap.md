@@ -49,24 +49,17 @@ The core agent is built and working:
       (pinned/current/shell markers, message count, relative age) without
       leaving the interactive session, and a `capOutputLines` cap (40 lines)
       on long `output`-type tool responses in the TTY renderer
+- [x] `cmd/spai` & `internal/app` test coverage — provider/config/MCP-lifecycle
+      helpers in `internal/app` (19.1% → 42.3% package coverage), and session,
+      disclaimer, and git-branch CLI helpers in `cmd/spai` (6.8% → 29.4%
+      package coverage). The `RunAgent`/`RunSession`/`streamText` event-loop
+      and interactive prompts (`main`, `init.go`) remain out of scope —
+      candidates for a future, heavier test-harness task
 
 ## Next
 
-### `cmd/spai` & `internal/app` test coverage
-
-- [x] `internal/app` provider/config/MCP-lifecycle coverage — `New`,
-      `ConfigPath`, `cloudNameModel`, `buildCloudProvider`, `activeProvider`,
-      `ProviderInfo`, `providers`, `loadSession`, `MCPServerCount`,
-      `MCPLoaded`, `MCPStatus`, `Close`, and `ActiveModel` (19.1% → 42.3%
-      package coverage). The core `RunAgent`/`RunSession`/`streamText`
-      event-streaming loop remains out of scope (needs a fuller
-      provider/agent test harness — a candidate for its own future task)
-- [ ] `cmd/spai` session & CLI-helper coverage — `handleSessionsListCommand`,
-      `isShellSession`, `handleHistoryCommand`, `handleSessionMaintenance`,
-      `dataDir`, `stampPath`, `showDisclaimer`, `gitBranch`, all currently 0%;
-      package at 6.8%. `main`, `runConfirmed`, `confirmPlan`, `printStream`,
-      `handleLLMCommand`, and `init.go`'s interactive prompts are out of
-      scope (stdin-interactive glue with low test ROI)
+Every seeded "Next" item is now shipped — this section is intentionally empty
+until new directions are chosen.
 
 ## Recently completed
 
@@ -107,6 +100,10 @@ The core agent is built and working:
       interactive session, reusing `session.ListSessions()`/`ReadPinned()`
 - [x] Terminal-friendly long tool-output display — `capOutputLines` line cap
       in the REPL renderer, separate from the tool layer's byte-level cap
+- [x] `internal/app` provider/config/MCP-lifecycle test coverage (19.1% →
+      42.3%)
+- [x] `cmd/spai` session, disclaimer, and git-branch helper test coverage
+      (6.8% → 29.4%)
 
 ## Parked ideas
 
