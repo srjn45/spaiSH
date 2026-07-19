@@ -52,8 +52,21 @@ The core agent is built and working:
 
 ## Next
 
-Every seeded "Next" item is now shipped — this section is intentionally empty
-until new directions are chosen.
+### `cmd/spai` & `internal/app` test coverage
+
+- [ ] `internal/app` provider/config/MCP-lifecycle coverage — `New`,
+      `ConfigPath`, `cloudNameModel`, `buildCloudProvider`, `activeProvider`,
+      `ProviderInfo`, `providers`, `loadSession`, `MCPServerCount`,
+      `MCPLoaded`, `MCPStatus`, `Close`, and `ActiveModel` (cost.go), all
+      currently 0%; package at 19.1%. The core `RunAgent`/`RunSession`/
+      `streamText` event-streaming loop is out of scope (needs a fuller
+      provider/agent test harness — a candidate for its own future task)
+- [ ] `cmd/spai` session & CLI-helper coverage — `handleSessionsListCommand`,
+      `isShellSession`, `handleHistoryCommand`, `handleSessionMaintenance`,
+      `dataDir`, `stampPath`, `showDisclaimer`, `gitBranch`, all currently 0%;
+      package at 6.8%. `main`, `runConfirmed`, `confirmPlan`, `printStream`,
+      `handleLLMCommand`, and `init.go`'s interactive prompts are out of
+      scope (stdin-interactive glue with low test ROI)
 
 ## Recently completed
 
