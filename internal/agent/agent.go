@@ -43,6 +43,16 @@ type Config struct {
 	// Trusted marks bash commands exempt from the sandbox (the allow_commands
 	// carve-out). nil trusts nothing.
 	Trusted func(cmd string) bool
+
+	// SubagentProfiles is the merged list of user-configured and built-in named
+	// agent profiles. It is consulted by runDelegate when the model names a profile
+	// in a delegate tool call. The zero value (nil) falls back to built-in defaults.
+	SubagentProfiles []SubagentProfile
+
+	// SystemPromptOverride, when non-empty, replaces the default agent system
+	// prompt for this agent instance. It is set on delegated sub-agents to inject
+	// a profile's focused system prompt without changing the top-level agent.
+	SystemPromptOverride string
 }
 
 // ConfirmFunc is called when a tier-gated tool call needs user approval.
@@ -91,8 +101,8 @@ func NewWithRegistry(provider ai.Provider, config Config, confirmFn ConfirmFunc,
 	// DefaultRegistry — which does NOT include this tool — so recursion depth
 	// can never exceed 1. Registry.Add is a no-op if "delegate" is already
 	// present, so this is safe to call unconditionally.
-	registry.Add(tools.NewDelegate(func(ctx context.Context, task string) (string, error) {
-		return runDelegate(ctx, provider, confirmFn, childConfig(config), task)
+	registry.Add(tools.NewDelegate(func(ctx context.Context, task, profile string) (string, error) {
+		return runDelegate(ctx, provider, confirmFn, childConfig(config), task, profile)
 	}))
 	return &Agent{provider: provider, config: config, confirmFn: confirmFn, registry: registry}
 }
@@ -128,7 +138,11 @@ func (a *Agent) Run(ctx context.Context, req *protocol.AgentRequest, sess *sessi
 }
 
 func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *session.Session, ch chan<- protocol.Response) {
-	system := systemPrompt + "\n\nWorking directory: " + a.config.WorkingDir
+	base := systemPrompt
+	if a.config.SystemPromptOverride != "" {
+		base = a.config.SystemPromptOverride
+	}
+	system := base + "\n\nWorking directory: " + a.config.WorkingDir
 	if spaiCtx := a.loadProjectContextCached(); spaiCtx != "" {
 		system += "\n\n## Project instructions (SPAI.md)\n" + spaiCtx
 	}
@@ -356,7 +370,11 @@ func classify(tc ai.ToolCall) (permissions.Tier, string) {
 		// sub-actions through this same confirmFn. TierWrite (not a stronger tier)
 		// because delegation itself performs no mutation: the sub-agent's actual
 		// Write/Destructive calls are each confirmed on their own merits.
-		return permissions.TierWrite, "delegate: " + tools.TaskArg(tc.Input)
+		task := tools.TaskArg(tc.Input)
+		if p := tools.ProfileArg(tc.Input); p != "" {
+			return permissions.TierWrite, fmt.Sprintf("delegate[%s]: %s", p, task)
+		}
+		return permissions.TierWrite, "delegate: " + task
 	default:
 		// MCP tools (mcp__<server>__<tool>) are external; gate them at Write
 		// tier so they require confirmation in manual mode.
