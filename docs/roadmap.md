@@ -63,8 +63,58 @@ The core agent is built and working:
 
 ## Next
 
-Every seeded "Next" item is now shipped — this section is intentionally empty
-until new directions are chosen.
+The seeded backlog is shipped; these are the next directions, grouped
+by leverage. Tier 1 is high-leverage, on-theme, and mostly
+self-contained; Tier 2 adds meaningful features; Tier 3 is polish.
+
+### Tier 1 — high leverage, mostly self-contained
+
+- [ ] Checkpoint & `/undo` for file edits — snapshot each file before
+      `write_file`/`edit_file`/`apply_patch`/`multi_edit` mutates it
+      (originals under `.spai/checkpoints/<session>/`), and add `/undo`
+      and `/redo` slash commands. Reuses the existing session plumbing.
+      Files: `internal/tools/files.go`, `internal/session/`,
+      `internal/cli/slash.go`.
+- [ ] Custom slash commands / prompt templates — discover
+      `.spai/commands/*.md` and expand them into prompts with
+      `$ARGUMENTS` / `$1` substitution (e.g. `/review`, `/fix-tests`).
+      Composes with the existing `SPAI.md` discovery. Files:
+      `internal/cli/slash.go`, `internal/config/project.go`.
+- [ ] Provider retry / backoff / rate-limit handling — no retry logic
+      exists today, so a 429 or transient 5xx fails the turn. Add
+      exponential backoff honouring `Retry-After` across all three
+      providers. Files: `internal/ai/{anthropic,openai,ollama}.go` (or
+      a shared wrapper).
+- [ ] Optional execution sandbox — `bash` and `code_exec` are
+      explicitly not sandboxed. Add an opt-in Linux sandbox (Landlock +
+      seccomp, or `bwrap` when present) restricting filesystem and
+      network access for `code_exec` and untrusted `bash`. Files:
+      `internal/tools/{bash,code_exec}.go`, new `internal/sandbox/`.
+
+### Tier 2 — meaningful features
+
+- [ ] Background / long-running `bash` — a `run_in_background` option, a
+      `/jobs` view, and streamed output. Files: `internal/tools/bash.go`.
+- [ ] `gh` / PR integration tool — open branches, commit, and create
+      PRs as an extension of the structured `git` tool.
+- [ ] OpenAI `reasoning_effort` passthrough — Anthropic already gets
+      adaptive thinking; OpenAI-compatible reasoning models get nothing.
+      Files: `internal/ai/openai.go`.
+- [ ] Named specialized subagents — today `delegate` is a single
+      depth-1 generic; add named agent profiles (e.g. `reviewer`,
+      `tester`) with their own system prompts and tool allowlists.
+      Files: `internal/agent/subagent.go`.
+
+### Tier 3 — polish
+
+- [ ] Pre/post-tool-use hooks — e.g. auto-`gofmt` after edits, or
+      block configured command patterns.
+- [ ] Model routing — a cheap model for classification/safety, an
+      expensive one for reasoning.
+- [ ] REPL polish — multiline input, fuzzy `@file` completion, and
+      syntax-highlighted diffs.
+- [ ] Session memory — auto-learned facts persisted across sessions,
+      beyond the static `SPAI.md`.
 
 ## Recently completed
 
