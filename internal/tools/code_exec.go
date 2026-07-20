@@ -33,8 +33,8 @@ type CodeExec struct{}
 func (CodeExec) Name() string { return "code_exec" }
 
 func (CodeExec) Description() string {
-	return "Execute a short snippet of Python or Node/JavaScript code as an " +
-		"ephemeral subprocess and return its combined stdout and stderr. The " +
+	return "Execute a short snippet of Python, Node/JavaScript, Ruby, or Go code " +
+		"as an ephemeral subprocess and return its combined stdout and stderr. The " +
 		"code runs in a fresh temporary directory that is deleted afterward, so " +
 		"you may write scratch files freely without touching the project. A hard " +
 		"timeout (default 15s, max 30s) kills runaway or infinite scripts.\n\n" +
@@ -43,16 +43,18 @@ func (CodeExec) Description() string {
 		"and process access. It is not seccomp/container/chroot isolated. The only " +
 		"differences from bash are a throwaway working directory and a timeout. " +
 		"Do not treat it as a safety boundary.\n\n" +
-		"Fields: `language` (one of \"python\", \"node\", \"javascript\") and " +
-		"`code` (the source to run). Optional `timeout_seconds` shortens the " +
-		"timeout; values above the 30s cap are clamped. Use for quick " +
+		"Fields: `language` (one of \"python\", \"node\", \"javascript\", \"ruby\", " +
+		"\"go\") and `code` (the source to run). Optional `timeout_seconds` shortens " +
+		"the timeout; values above the 30s cap are clamped. Use for quick " +
 		"computation, data munging, or prototyping — not for long-running or " +
-		"interactive programs."
+		"interactive programs.\n\n" +
+		"Go is run with `go run`, so the code must be a complete runnable file with " +
+		"a `package main` declaration and a `func main()`, not a bare snippet."
 }
 
 func (CodeExec) Schema() map[string]any {
 	return objectSchema(map[string]any{
-		"language": strProp("The language to run: \"python\", \"node\", or \"javascript\"."),
+		"language": strProp("The language to run: \"python\", \"node\", \"javascript\", \"ruby\", or \"go\". Go code is run via `go run` and must be a complete file with `package main` and `func main()`."),
 		"code":     strProp("The source code to execute."),
 		"timeout_seconds": map[string]any{
 			"type":        "integer",
@@ -74,7 +76,7 @@ func (CodeExec) Run(ctx context.Context, input json.RawMessage) (string, error) 
 		return "", fmt.Errorf("empty code")
 	}
 
-	bin, ext, err := interpreterFor(args.Language)
+	bin, leadingArgs, ext, err := interpreterFor(args.Language)
 	if err != nil {
 		return "", err
 	}
@@ -99,7 +101,9 @@ func (CodeExec) Run(ctx context.Context, input json.RawMessage) (string, error) 
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(runCtx, bin, scriptPath)
+	// leadingArgs lets a language prepend fixed args before the script path
+	// (e.g. Go needs `go run main.go`); it is empty for plain interpreters.
+	cmd := exec.CommandContext(runCtx, bin, append(append([]string{}, leadingArgs...), scriptPath)...)
 	cmd.Dir = dir
 	var out strings.Builder
 	cmd.Stdout = &out
@@ -141,24 +145,37 @@ func clampTimeoutSeconds(sec int) time.Duration {
 	return d
 }
 
-// interpreterFor resolves the interpreter binary and script extension for a
-// language. It returns a friendly error for unsupported languages and for
-// supported ones whose interpreter is not installed on PATH.
-func interpreterFor(language string) (bin, ext string, err error) {
+// interpreterFor resolves the command for a language: the binary to invoke, any
+// leading args to place before the script path (empty for plain interpreters,
+// ["run"] for `go run`), and the script file extension. It returns a friendly
+// error for unsupported languages and for supported ones whose toolchain is not
+// installed on PATH.
+func interpreterFor(language string) (bin string, leadingArgs []string, ext string, err error) {
 	switch strings.ToLower(strings.TrimSpace(language)) {
 	case "python", "python3", "py":
 		for _, cand := range []string{"python3", "python"} {
 			if p, e := exec.LookPath(cand); e == nil {
-				return p, ".py", nil
+				return p, nil, ".py", nil
 			}
 		}
-		return "", "", fmt.Errorf("python interpreter not found on PATH")
+		return "", nil, "", fmt.Errorf("python interpreter not found on PATH")
 	case "node", "javascript", "js":
 		if p, e := exec.LookPath("node"); e == nil {
-			return p, ".js", nil
+			return p, nil, ".js", nil
 		}
-		return "", "", fmt.Errorf("node interpreter not found on PATH")
+		return "", nil, "", fmt.Errorf("node interpreter not found on PATH")
+	case "ruby", "rb":
+		if p, e := exec.LookPath("ruby"); e == nil {
+			return p, nil, ".rb", nil
+		}
+		return "", nil, "", fmt.Errorf("ruby interpreter not found on PATH")
+	case "go", "golang":
+		// Go has no script interpreter: `go run main.go` compiles and runs.
+		if p, e := exec.LookPath("go"); e == nil {
+			return p, []string{"run"}, ".go", nil
+		}
+		return "", nil, "", fmt.Errorf("go toolchain not found on PATH")
 	default:
-		return "", "", fmt.Errorf("unsupported language %q (supported: python, node/javascript)", language)
+		return "", nil, "", fmt.Errorf("unsupported language %q (supported: python, node/javascript, ruby, go)", language)
 	}
 }
