@@ -58,8 +58,17 @@ The core agent is built and working:
 
 ## Next
 
-Every seeded "Next" item is now shipped — this section is intentionally empty
-until new directions are chosen.
+### Provider & tool breadth
+
+- [ ] `web_search` tool — a new `internal/tools/web_search.go` tool that
+      queries the web and returns a capped list of title/url/snippet results
+      (no API key required; DuckDuckGo's HTML endpoint is a reasonable
+      backend), complementing the existing `web_fetch` (which requires an
+      exact URL already in hand)
+- [ ] `code_exec` language breadth — extend `interpreterFor` in
+      `internal/tools/code_exec.go` (currently python and node/javascript
+      only) to add at least Ruby and Go (`go run`), updating the tool's
+      `Description`/`Schema` accordingly
 
 ## Recently completed
 
