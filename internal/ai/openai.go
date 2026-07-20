@@ -22,13 +22,14 @@ type OpenAIProvider struct {
 
 // NewOpenAIProvider creates an OpenAI-compatible provider. apiKey may be empty
 // for local keyless servers; endpoint should include any version prefix (e.g.
-// ".../v1").
-func NewOpenAIProvider(endpoint, apiKey, model string) *OpenAIProvider {
+// ".../v1"). retry configures the shared backoff policy applied to every
+// request; a zero RetryConfig resolves to the package defaults.
+func NewOpenAIProvider(endpoint, apiKey, model string, retry RetryConfig) *OpenAIProvider {
 	return &OpenAIProvider{
 		endpoint: strings.TrimRight(endpoint, "/"),
 		apiKey:   apiKey,
 		model:    model,
-		client:   &http.Client{},
+		client:   NewRetryClient(nil, retry),
 	}
 }
 
