@@ -68,10 +68,11 @@ type MCPServerConfig struct {
 }
 
 type ProviderConfig struct {
-	Kind      string `toml:"kind"` // "anthropic" (default) | "openai"
-	Endpoint  string `toml:"endpoint"`
-	APIKeyEnv string `toml:"api_key_env"`
-	Model     string `toml:"model"`
+	Kind            string `toml:"kind"` // "anthropic" (default) | "openai"
+	Endpoint        string `toml:"endpoint"`
+	APIKeyEnv       string `toml:"api_key_env"`
+	Model           string `toml:"model"`
+	ReasoningEffort string `toml:"reasoning_effort"` // "low"|"medium"|"high" or "" (omit field)
 }
 
 type LocalConfig struct {

@@ -147,7 +147,8 @@ func buildCloudProvider(cfg *config.Config) ai.Provider {
 	retry := retryConfig(cfg)
 	switch cfg.Provider.Kind {
 	case "openai":
-		return ai.NewOpenAIProvider(cfg.Provider.Endpoint, cfg.APIKey(), cfg.Provider.Model, retry)
+		return ai.NewOpenAIProvider(cfg.Provider.Endpoint, cfg.APIKey(), cfg.Provider.Model, retry).
+			WithReasoningEffort(cfg.Provider.ReasoningEffort)
 	default: // "anthropic" or unset
 		key := cfg.APIKey()
 		if key == "" {
@@ -271,7 +272,8 @@ func (a *App) SetModel(args []string) (string, error) {
 		if endpoint == "" {
 			return "", fmt.Errorf("openai endpoint not configured — set [provider].endpoint in spaid.toml")
 		}
-		p = ai.NewOpenAIProvider(endpoint, a.cfg.APIKey(), model, retry)
+		p = ai.NewOpenAIProvider(endpoint, a.cfg.APIKey(), model, retry).
+			WithReasoningEffort(a.cfg.Provider.ReasoningEffort)
 	case "ollama":
 		if model == "" {
 			model = a.localModel

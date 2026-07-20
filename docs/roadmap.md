@@ -77,9 +77,6 @@ _All Tier 1 items shipped — see Recently completed._
       `/jobs` view, and streamed output. Files: `internal/tools/bash.go`.
 - [ ] `gh` / PR integration tool — open branches, commit, and create
       PRs as an extension of the structured `git` tool.
-- [ ] OpenAI `reasoning_effort` passthrough — Anthropic already gets
-      adaptive thinking; OpenAI-compatible reasoning models get nothing.
-      Files: `internal/ai/openai.go`.
 - [ ] Named specialized subagents — today `delegate` is a single
       depth-1 generic; add named agent profiles (e.g. `reviewer`,
       `tester`) with their own system prompts and tool allowlists.
@@ -98,6 +95,11 @@ _All Tier 1 items shipped — see Recently completed._
 
 ## Recently completed
 
+- [x] OpenAI `reasoning_effort` passthrough — a new `reasoning_effort` config
+      key in `[provider]` (spaid.toml) passes the effort level ("low",
+      "medium", "high") to OpenAI-compatible reasoning models (o1, o3,
+      o4-mini, …). An empty value (the default) omits the field entirely,
+      keeping all existing non-reasoning-model behaviour unchanged.
 - [x] Optional execution sandbox — an opt-in, default-OFF Linux sandbox
       (native Landlock + seccomp, or `bwrap` when present) restricting
       filesystem and network access for `code_exec` and untrusted `bash`,
