@@ -163,7 +163,7 @@ func TestProviderInfo(t *testing.T) {
 		cfg := &config.Config{}
 		a := &App{
 			cfg:         cfg,
-			cloud:       ai.NewAnthropicProvider("", ""), // no key → not configured
+			cloud:       ai.NewAnthropicProvider("", "", ai.RetryConfig{}), // no key → not configured
 			activeName:  "anthropic",
 			activeModel: "", // empty model → no "/model" segment
 		}

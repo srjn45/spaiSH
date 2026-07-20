@@ -2,3 +2,5 @@
 /spaid
 .claude/settings.local.json
 .worktrees/
+# Runtime edit-checkpoint snapshots written by /undo and /redo.
+.spai/checkpoints/

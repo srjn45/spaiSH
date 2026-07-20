@@ -14,8 +14,8 @@ func newTestApp() *App {
 	name, model := cloudNameModel(cfg)
 	return &App{
 		cfg:         cfg,
-		cloud:       ai.NewAnthropicProvider("sk-test", model),
-		local:       ai.NewLocalProvider("http://127.0.0.1:0", "qwen2.5-coder"),
+		cloud:       ai.NewAnthropicProvider("sk-test", model, ai.RetryConfig{}),
+		local:       ai.NewLocalProvider("http://127.0.0.1:0", "qwen2.5-coder", ai.RetryConfig{}),
 		localModel:  "qwen2.5-coder",
 		activeName:  name,
 		activeModel: model,

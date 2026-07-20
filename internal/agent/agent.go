@@ -157,6 +157,13 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 	}
 	toolSpecs := a.registry.Specs()
 
+	// Thread a checkpointer through ctx so mutating tools snapshot files before
+	// they write. The store is keyed by (project, session) and resolved from the
+	// same working directory the REPL's /undo, /redo use, so they share history.
+	if sess != nil {
+		ctx = tools.WithCheckpointer(ctx, session.NewCheckpointStore(sess.ID(), a.config.WorkingDir))
+	}
+
 	// Accumulate real API-reported usage across all iterations of this Run()
 	// call. Deferred so it runs on every exit path.
 	var totalUsage ai.Usage

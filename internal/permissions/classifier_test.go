@@ -52,6 +52,30 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+// TestSlashTier covers the built-in slash commands the tier system gates.
+func TestSlashTier(t *testing.T) {
+	cases := []struct {
+		name   string
+		want   permissions.Tier
+		wantOK bool
+	}{
+		{"/undo", permissions.TierWrite, true},
+		{"/redo", permissions.TierWrite, true},
+		{"undo", permissions.TierWrite, true}, // leading slash optional
+		{"/help", 0, false},                   // read-only command: ungated
+		{"/deploy", 0, false},                 // custom command: not tier-gated here
+	}
+	for _, tc := range cases {
+		got, ok := permissions.SlashTier(tc.name)
+		if ok != tc.wantOK {
+			t.Errorf("SlashTier(%q) ok = %v, want %v", tc.name, ok, tc.wantOK)
+		}
+		if ok && got != tc.want {
+			t.Errorf("SlashTier(%q) = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 // TestClassifyParsing covers cases the old substring matcher got wrong.
 func TestClassifyParsing(t *testing.T) {
 	cases := []struct {

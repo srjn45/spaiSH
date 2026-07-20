@@ -79,11 +79,11 @@ type SessionRequest struct {
 // ShellEvent is the payload for "shell" request type.
 // spaiSH sends this when a shell event requires AI input.
 type ShellEvent struct {
-	Trigger     string `json:"trigger"`                 // "error" | "prompt" | "pattern" | "rethink"
-	Command     string `json:"command"`                 // command that was run (empty for freeform prompts)
-	Output      string `json:"output"`                  // merged stdout+stderr from PTY, tail-trimmed to 8KB
-	ExitCode    int    `json:"exit_code"`               // exit code of the command
-	CWD         string `json:"cwd"`                     // working directory at time of event
-	Query       string `json:"query,omitempty"`         // user's natural language input ("prompt" trigger)
-	FullHistory string `json:"full_history,omitempty"`  // populated only on "rethink" trigger
+	Trigger     string `json:"trigger"`                // "error" | "prompt" | "pattern" | "rethink"
+	Command     string `json:"command"`                // command that was run (empty for freeform prompts)
+	Output      string `json:"output"`                 // merged stdout+stderr from PTY, tail-trimmed to 8KB
+	ExitCode    int    `json:"exit_code"`              // exit code of the command
+	CWD         string `json:"cwd"`                    // working directory at time of event
+	Query       string `json:"query,omitempty"`        // user's natural language input ("prompt" trigger)
+	FullHistory string `json:"full_history,omitempty"` // populated only on "rethink" trigger
 }

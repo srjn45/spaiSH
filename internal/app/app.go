@@ -91,13 +91,14 @@ func New() *App {
 	}
 
 	cloud := buildCloudProvider(cfg)
+	retry := retryConfig(cfg)
 	var local ai.Provider
 	switch llmState.ActiveRuntime {
 	case "bitnet":
 		rt, _ := llm.Get("bitnet")
-		local = ai.NewOpenAIProvider(rt.Endpoint+"/v1", "", localModel)
+		local = ai.NewOpenAIProvider(rt.Endpoint+"/v1", "", localModel, retry)
 	default: // "ollama" or unset
-		local = ai.NewLocalProvider(cfg.Local.OllamaEndpoint, localModel)
+		local = ai.NewLocalProvider(cfg.Local.OllamaEndpoint, localModel, retry)
 	}
 
 	name, model := cloudNameModel(cfg)
@@ -143,15 +144,27 @@ func canonicalProvider(name string) string {
 // the native Anthropic provider; set [provider].kind = "openai" for an
 // OpenAI-compatible endpoint.
 func buildCloudProvider(cfg *config.Config) ai.Provider {
+	retry := retryConfig(cfg)
 	switch cfg.Provider.Kind {
 	case "openai":
-		return ai.NewOpenAIProvider(cfg.Provider.Endpoint, cfg.APIKey(), cfg.Provider.Model)
+		return ai.NewOpenAIProvider(cfg.Provider.Endpoint, cfg.APIKey(), cfg.Provider.Model, retry)
 	default: // "anthropic" or unset
 		key := cfg.APIKey()
 		if key == "" {
 			key = os.Getenv("ANTHROPIC_API_KEY")
 		}
-		return ai.NewAnthropicProvider(key, cfg.Provider.Model)
+		return ai.NewAnthropicProvider(key, cfg.Provider.Model, retry)
+	}
+}
+
+// retryConfig converts the TOML [retry] section into an ai.RetryConfig, mapping
+// millisecond durations to time.Duration. Zero fields are passed through and
+// resolved to defaults inside the ai package.
+func retryConfig(cfg *config.Config) ai.RetryConfig {
+	return ai.RetryConfig{
+		MaxAttempts: cfg.Retry.MaxAttempts,
+		BaseDelay:   time.Duration(cfg.Retry.BaseDelayMS) * time.Millisecond,
+		MaxDelay:    time.Duration(cfg.Retry.MaxDelayMS) * time.Millisecond,
 	}
 }
 
@@ -239,13 +252,14 @@ func (a *App) SetModel(args []string) (string, error) {
 		return "", fmt.Errorf("unknown provider %q (try: anthropic, openai, ollama)", name)
 	}
 
+	retry := retryConfig(a.cfg)
 	var p ai.Provider
 	switch kind {
 	case "anthropic":
 		if model == "" {
 			model = ai.DefaultAnthropicModel
 		}
-		p = ai.NewAnthropicProvider(a.anthropicKey(), model)
+		p = ai.NewAnthropicProvider(a.anthropicKey(), model, retry)
 	case "openai":
 		if model == "" {
 			model = a.cfg.Provider.Model
@@ -257,7 +271,7 @@ func (a *App) SetModel(args []string) (string, error) {
 		if endpoint == "" {
 			return "", fmt.Errorf("openai endpoint not configured — set [provider].endpoint in spaid.toml")
 		}
-		p = ai.NewOpenAIProvider(endpoint, a.cfg.APIKey(), model)
+		p = ai.NewOpenAIProvider(endpoint, a.cfg.APIKey(), model, retry)
 	case "ollama":
 		if model == "" {
 			model = a.localModel
@@ -265,7 +279,7 @@ func (a *App) SetModel(args []string) (string, error) {
 		if model == "" {
 			return "", fmt.Errorf("specify a local model (e.g. /model ollama:qwen2.5-coder)")
 		}
-		p = ai.NewLocalProvider(a.cfg.Local.OllamaEndpoint, model)
+		p = ai.NewLocalProvider(a.cfg.Local.OllamaEndpoint, model, retry)
 	}
 
 	if !p.Available() {

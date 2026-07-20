@@ -17,6 +17,7 @@ type Config struct {
 	Spaish      SpaishConfig      `toml:"spaish"`
 	MCP         MCPConfig         `toml:"mcp"`
 	Sandbox     SandboxConfig     `toml:"sandbox"`
+	Retry       RetryConfig       `toml:"retry"`
 }
 
 // SandboxConfig is the opt-in, default-OFF execution sandbox for the bash and
@@ -38,6 +39,17 @@ type SandboxConfig struct {
 	// TrustAllowlistedCommands, when true, exempts bash commands matched by
 	// [permissions].allow_commands from the sandbox. Default false (sandbox all).
 	TrustAllowlistedCommands bool `toml:"trust_allowlisted_commands"`
+}
+
+// RetryConfig mirrors ai.RetryConfig on the wire, expressing durations as
+// integer milliseconds for TOML friendliness. It is a top-level section because
+// the policy spans the Anthropic/OpenAI providers under [provider] and Ollama
+// under [local]. Zero/absent values resolve to the ai package defaults, so the
+// section is optional.
+type RetryConfig struct {
+	MaxAttempts int `toml:"max_attempts"`  // default 4
+	BaseDelayMS int `toml:"base_delay_ms"` // default 500
+	MaxDelayMS  int `toml:"max_delay_ms"`  // default 30000
 }
 
 // MCPConfig declares external Model Context Protocol servers to connect to. Each

@@ -56,6 +56,12 @@ func (s *Session) Dir() string {
 	return s.dir
 }
 
+// ID returns the session's identifier (the base name of its directory). Used to
+// key per-session state such as the checkpoint store.
+func (s *Session) ID() string {
+	return filepath.Base(s.dir)
+}
+
 // LoadByID loads the session for the given ID from SessionsDir.
 // An empty id falls back to "default".
 // Transparently migrates the old flat layout (sessions/<id>.json → sessions/<id>/cache.json).

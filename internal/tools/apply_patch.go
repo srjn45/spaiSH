@@ -71,7 +71,7 @@ func (ApplyPatch) Schema() map[string]any {
 	}, "patch")
 }
 
-func (ApplyPatch) Run(_ context.Context, input json.RawMessage) (string, error) {
+func (ApplyPatch) Run(ctx context.Context, input json.RawMessage) (string, error) {
 	var args struct {
 		Patch string `json:"patch"`
 	}
@@ -126,6 +126,14 @@ func (ApplyPatch) Run(_ context.Context, input json.RawMessage) (string, error) 
 			plans = append(plans, plan{op: opDelete, path: fp.path})
 		}
 	}
+
+	// Snapshot every file the plan touches (add/update/delete) as one atomic
+	// checkpoint before Pass 2 writes, so /undo reverts the whole patch at once.
+	paths := make([]string, len(plans))
+	for i, p := range plans {
+		paths[i] = p.path
+	}
+	snapshot(ctx, paths...)
 
 	// Pass 2: execute the validated plan.
 	var summary []string

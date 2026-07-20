@@ -106,7 +106,10 @@ Run `spai` with no arguments for a multi-turn session. Slash commands:
 | `/clear` | wipe the conversation context |
 | `/compact` | summarise and compact the session |
 | `/history` | print the session history |
+| `/undo`, `/redo` | revert / re-apply the agent's last file mutation (create, edit, or delete) |
 | `/help`, `/quit` | help (`/help <command>` for detail), exit |
+
+Drop a Markdown file in `.spai/commands/` to add your own slash command: `.spai/commands/review.md` becomes `/review`. The file body is a prompt template — `$ARGUMENTS` expands to everything after the command and `$1`, `$2`, … to individual arguments — that runs as a normal agent turn (inheriting `SPAI.md` context and the usual permission gating).
 
 Reference a file with `@path` to include its contents — press `Tab` after `@`
 to complete file and directory names. `Shift-Tab` cycles the execution mode.
@@ -135,6 +138,30 @@ You can layer a **configurable policy** on top of the tier gate in the
 `[permissions]` section of `spaid.toml` — allow/confirm/deny per tool or per MCP
 server, plus a bash `allow_commands` prefix allowlist (e.g. `git status`) that
 bypasses confirmation. See the annotated `config/spaid.toml` for the keys.
+
+Transient provider failures (HTTP 429 or 5xx) are retried automatically with
+exponential backoff and jitter, honouring a server `Retry-After` header, across
+all providers. Tune it in the optional `[retry]` section of `spaid.toml`
+(`max_attempts`, `base_delay_ms`, `max_delay_ms`).
+
+As **defense-in-depth under** the permission gate (never a replacement for it),
+`code_exec` and untrusted `bash` commands can be run inside an opt-in execution
+sandbox that restricts filesystem and network access. It is **off by default**
+and enforced on Linux (native Landlock + seccomp, or `bwrap` when present); on
+other platforms it is a no-op. Enable and tune it in the optional `[sandbox]`
+section of `spaid.toml`:
+
+```toml
+[sandbox]
+enabled = true                     # master opt-in (default false)
+allow_network = false              # keep network open (default false = deny)
+allow_paths = ["/extra/writable"]  # extra writable dirs (cwd + code_exec temp always writable)
+backend = "auto"                   # "auto" | "bwrap" | "landlock" | "off"
+trust_allowlisted_commands = false # exempt [permissions].allow_commands from the sandbox
+```
+
+When enabled but the platform cannot enforce it, the command fails closed rather
+than running unsandboxed.
 
 Sessions are file-backed and auto-compact when they grow large.
 

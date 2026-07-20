@@ -123,8 +123,8 @@ func computeDiff(oldText, newText string, ctxLines int) []diffLine {
 
 	// Annotate each op with its 1-based old/new line numbers.
 	type lop struct {
-		kind        opKind
-		text        string
+		kind         opKind
+		text         string
 		oldLn, newLn int
 	}
 	lops := make([]lop, 0, len(ops))

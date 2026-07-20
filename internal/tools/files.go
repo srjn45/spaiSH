@@ -51,7 +51,7 @@ func (WriteFile) Schema() map[string]any {
 	}, "path", "content")
 }
 
-func (WriteFile) Run(_ context.Context, input json.RawMessage) (string, error) {
+func (WriteFile) Run(ctx context.Context, input json.RawMessage) (string, error) {
 	var args struct {
 		Path    string `json:"path"`
 		Content string `json:"content"`
@@ -59,6 +59,7 @@ func (WriteFile) Run(_ context.Context, input json.RawMessage) (string, error) {
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
 	}
+	snapshot(ctx, args.Path)
 	if dir := filepath.Dir(args.Path); dir != "" {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return "", err
@@ -121,7 +122,7 @@ func computeEdit(args editArgs) (oldContent, newContent string, n int, err error
 	return oldContent, newContent, n, nil
 }
 
-func (EditFile) Run(_ context.Context, input json.RawMessage) (string, error) {
+func (EditFile) Run(ctx context.Context, input json.RawMessage) (string, error) {
 	var args editArgs
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
@@ -130,6 +131,7 @@ func (EditFile) Run(_ context.Context, input json.RawMessage) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	snapshot(ctx, args.Path)
 	info, _ := os.Stat(args.Path)
 	mode := os.FileMode(0644)
 	if info != nil {

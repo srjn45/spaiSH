@@ -19,12 +19,14 @@ type OllamaProvider struct {
 	client   *http.Client
 }
 
-// NewLocalProvider creates a provider backed by a local Ollama server.
-func NewLocalProvider(endpoint, model string) *OllamaProvider {
+// NewLocalProvider creates a provider backed by a local Ollama server. retry
+// configures the shared backoff policy applied to every request; a zero
+// RetryConfig resolves to the package defaults.
+func NewLocalProvider(endpoint, model string, retry RetryConfig) *OllamaProvider {
 	return &OllamaProvider{
 		endpoint: strings.TrimRight(endpoint, "/"),
 		model:    model,
-		client:   &http.Client{},
+		client:   NewRetryClient(nil, retry),
 	}
 }
 

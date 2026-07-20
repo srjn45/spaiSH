@@ -65,6 +65,37 @@ max_iterations = 25
 # Verbose tool output.
 verbose = false
 
+# Shared retry policy for provider requests. Transient failures (HTTP 429 or
+# 5xx) are retried with exponential backoff and jitter, honouring a server
+# Retry-After header, across all three providers. This whole section is optional
+# — omit it (or any key) to use the defaults shown below.
+[retry]
+# Total attempts including the first (>= 1). Default 4.
+max_attempts = 4
+# First backoff step, in milliseconds; doubles each attempt. Default 500.
+base_delay_ms = 500
+# Cap on any single backoff wait, in milliseconds. Default 30000.
+max_delay_ms = 30000
+
+# Opt-in execution sandbox for code_exec and untrusted bash. Defense-in-depth
+# layered UNDER the permission gate — it never replaces a confirmation. Off by
+# default; enforced on Linux (native Landlock + seccomp, or bwrap when present)
+# and a no-op on other platforms. When enabled but unenforceable, commands fail
+# closed rather than running unsandboxed. This whole section is optional.
+[sandbox]
+# Master opt-in. Default false (disabled == pre-sandbox behavior exactly).
+enabled = false
+# Keep network access open when true. Default false (deny network).
+allow_network = false
+# Extra writable directories. The working directory and the code_exec throwaway
+# temp dir are always writable in addition to these. Default none.
+allow_paths = []
+# Mechanism: "auto" (default) | "bwrap" | "landlock" | "off".
+backend = "auto"
+# When true, bash commands matched by [permissions].allow_commands are exempt
+# from the sandbox. Default false (sandbox everything).
+trust_allowlisted_commands = false
+
 # External MCP (Model Context Protocol) servers. Each server is spawned over
 # stdio and its tools are exposed to the model as mcp__<name>__<tool>. They are
 # treated as Write-tier and confirmed in manual mode. A server that fails to

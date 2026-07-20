@@ -129,6 +129,26 @@ var gitValueFlags = map[string]bool{
 	"--git-dir": true, "--work-tree": true, "--namespace": true,
 }
 
+// slashTiers gives the permission tier for the built-in slash commands that the
+// tier system gates. Only mutating commands appear here; everything else is
+// ungated (read-only REPL output).
+var slashTiers = map[string]Tier{
+	"/undo": TierWrite,
+	"/redo": TierWrite,
+}
+
+// SlashTier returns the tier for a built-in slash command, and false for
+// commands the tier system does not gate. /undo and /redo rewrite files, so they
+// classify at TierWrite and prompt once in manual mode. The name may be given
+// with or without its leading slash.
+func SlashTier(name string) (Tier, bool) {
+	if !strings.HasPrefix(name, "/") {
+		name = "/" + name
+	}
+	t, ok := slashTiers[name]
+	return t, ok
+}
+
 // Classify returns the permission tier for the given shell command. It parses
 // the command with a real shell parser and classifies every simple command in
 // the pipeline/list, returning the most dangerous tier found. Classification is
