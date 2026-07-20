@@ -310,6 +310,9 @@ func classify(tc ai.ToolCall) (permissions.Tier, string) {
 		return permissions.Classify(cmd), cmd
 	case "http_request":
 		return permissions.TierElevated, "http_request " + tools.URLArg(tc.Input)
+	case "web_search":
+		// Read-only network search (like web_fetch): no confirmation gate.
+		return permissions.TierRead, "web_search " + tools.QueryArg(tc.Input)
 	case "write_file", "edit_file", "multi_edit":
 		return permissions.TierWrite, tc.Name + " " + tools.PathArg(tc.Input)
 	case "git":

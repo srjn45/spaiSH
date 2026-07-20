@@ -62,6 +62,7 @@ func DefaultRegistry() *Registry {
 		&Grep{},
 		&ListDir{},
 		&WebFetch{},
+		&WebSearch{},
 		&ApplyPatch{},
 		&HTTPRequest{},
 		&MultiEdit{},
@@ -136,6 +137,16 @@ func URLArg(input json.RawMessage) string {
 	}
 	_ = json.Unmarshal(input, &args)
 	return args.URL
+}
+
+// QueryArg extracts the "query" field from a tool call input, for display in
+// the confirmation prompt. Returns "" when absent.
+func QueryArg(input json.RawMessage) string {
+	var args struct {
+		Query string `json:"query"`
+	}
+	_ = json.Unmarshal(input, &args)
+	return args.Query
 }
 
 // tailTrim returns the last maxBytes bytes of s, prefixed with a notice when
