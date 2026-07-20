@@ -194,6 +194,62 @@ func TestClassifyMoreCommands(t *testing.T) {
 	}
 }
 
+// TestClassifyGH covers the gh CLI subcommand tier mapping wired into Classify.
+func TestClassifyGH(t *testing.T) {
+	cases := []struct {
+		command string
+		want    permissions.Tier
+	}{
+		// PR read-only
+		{"gh pr view", permissions.TierRead},
+		{"gh pr view 123", permissions.TierRead},
+		{"gh pr list", permissions.TierRead},
+		{"gh pr list --limit 10", permissions.TierRead},
+		{"gh pr status", permissions.TierRead},
+		{"gh pr checks", permissions.TierRead},
+		{"gh pr diff", permissions.TierRead},
+		// PR local mutation
+		{"gh pr checkout 42", permissions.TierWrite},
+		// PR outward-facing (remote mutations)
+		{"gh pr create --title x --body y", permissions.TierElevated},
+		{"gh pr merge 42", permissions.TierElevated},
+		{"gh pr close 42", permissions.TierElevated},
+		{"gh pr comment --body hi", permissions.TierElevated},
+		{"gh pr reopen 42", permissions.TierElevated},
+		{"gh pr review --approve", permissions.TierElevated},
+		// Run subcommand
+		{"gh run view", permissions.TierRead},
+		{"gh run list", permissions.TierRead},
+		{"gh run watch 123", permissions.TierRead},
+		{"gh run rerun 123", permissions.TierElevated},
+		{"gh run cancel 123", permissions.TierElevated},
+		// Repo subcommand
+		{"gh repo view", permissions.TierRead},
+		{"gh repo clone owner/repo", permissions.TierRead},
+		{"gh repo create myrepo", permissions.TierElevated},
+		{"gh repo fork upstream/repo", permissions.TierElevated},
+		// Issue subcommand
+		{"gh issue view 1", permissions.TierRead},
+		{"gh issue list", permissions.TierRead},
+		{"gh issue status", permissions.TierRead},
+		{"gh issue create --title x", permissions.TierElevated},
+		{"gh issue close 1", permissions.TierElevated},
+		// Release subcommand
+		{"gh release view v1.0", permissions.TierRead},
+		{"gh release list", permissions.TierRead},
+		{"gh release create v1.1", permissions.TierElevated},
+		// Unknown gh subcommand defaults to Write
+		{"gh auth login", permissions.TierWrite},
+		{"gh extension list", permissions.TierWrite},
+	}
+	for _, tc := range cases {
+		got := permissions.Classify(tc.command)
+		if got != tc.want {
+			t.Errorf("Classify(%q) = %v, want %v", tc.command, got, tc.want)
+		}
+	}
+}
+
 func TestTierStringAndDisplay(t *testing.T) {
 	tiers := []struct {
 		tier    permissions.Tier

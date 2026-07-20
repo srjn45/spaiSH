@@ -80,6 +80,7 @@ func RegistryWithSandbox(sb sandbox.Sandbox, trusted func(cmd string) bool) *Reg
 		&HTTPRequest{},
 		&MultiEdit{},
 		&Git{},
+		&GH{},
 		&TodoWrite{},
 		&CodeExec{Sandbox: sb},
 	)
