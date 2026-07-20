@@ -20,32 +20,45 @@ type AnthropicProvider struct {
 }
 
 // NewAnthropicProvider creates a provider for the Anthropic Messages API.
-// model may be empty, in which case DefaultAnthropicModel is used.
-func NewAnthropicProvider(apiKey, model string) *AnthropicProvider {
+// model may be empty, in which case DefaultAnthropicModel is used. retry
+// configures the shared backoff policy; a zero RetryConfig resolves to the
+// package defaults.
+func NewAnthropicProvider(apiKey, model string, retry RetryConfig) *AnthropicProvider {
 	if model == "" {
 		model = DefaultAnthropicModel
 	}
 	return &AnthropicProvider{
 		apiKey: apiKey,
 		model:  model,
-		client: anthropic.NewClient(option.WithAPIKey(apiKey)),
+		client: anthropic.NewClient(anthropicOptions(apiKey, retry)...),
 	}
 }
 
 // NewAnthropicProviderWithBase creates a provider that sends requests to baseURL
 // instead of the default Anthropic endpoint. Useful for directing traffic to a
-// test HTTP server.
-func NewAnthropicProviderWithBase(apiKey, model, baseURL string) *AnthropicProvider {
+// test HTTP server. retry configures the shared backoff policy; a zero
+// RetryConfig resolves to the package defaults.
+func NewAnthropicProviderWithBase(apiKey, model, baseURL string, retry RetryConfig) *AnthropicProvider {
 	if model == "" {
 		model = DefaultAnthropicModel
 	}
+	opts := append(anthropicOptions(apiKey, retry), option.WithBaseURL(baseURL))
 	return &AnthropicProvider{
 		apiKey: apiKey,
 		model:  model,
-		client: anthropic.NewClient(
-			option.WithAPIKey(apiKey),
-			option.WithBaseURL(baseURL),
-		),
+		client: anthropic.NewClient(opts...),
+	}
+}
+
+// anthropicOptions returns the base SDK options shared by both constructors. It
+// routes the SDK through the shared retry transport and disables the SDK's own
+// retry (WithMaxRetries(0)) so backoff is applied exactly once, giving one
+// uniform, config-driven policy across all providers.
+func anthropicOptions(apiKey string, retry RetryConfig) []option.RequestOption {
+	return []option.RequestOption{
+		option.WithAPIKey(apiKey),
+		option.WithHTTPClient(NewRetryClient(nil, retry)),
+		option.WithMaxRetries(0),
 	}
 }
 
