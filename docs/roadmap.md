@@ -69,17 +69,6 @@ self-contained; Tier 2 adds meaningful features; Tier 3 is polish.
 
 ### Tier 1 — high leverage, mostly self-contained
 
-- [ ] Checkpoint & `/undo` for file edits — snapshot each file before
-      `write_file`/`edit_file`/`apply_patch`/`multi_edit` mutates it
-      (originals under `.spai/checkpoints/<session>/`), and add `/undo`
-      and `/redo` slash commands. Reuses the existing session plumbing.
-      Files: `internal/tools/files.go`, `internal/session/`,
-      `internal/cli/slash.go`.
-- [ ] Custom slash commands / prompt templates — discover
-      `.spai/commands/*.md` and expand them into prompts with
-      `$ARGUMENTS` / `$1` substitution (e.g. `/review`, `/fix-tests`).
-      Composes with the existing `SPAI.md` discovery. Files:
-      `internal/cli/slash.go`, `internal/config/project.go`.
 - [ ] Provider retry / backoff / rate-limit handling — no retry logic
       exists today, so a 429 or transient 5xx fails the turn. Add
       exponential backoff honouring `Retry-After` across all three
@@ -118,6 +107,13 @@ self-contained; Tier 2 adds meaningful features; Tier 3 is polish.
 
 ## Recently completed
 
+- [x] Checkpoint & `/undo` for file edits — snapshot each file before
+      `write_file`/`edit_file`/`apply_patch`/`multi_edit` mutates it
+      (originals under `.spai/checkpoints/<session>/`), with `/undo`
+      and `/redo` slash commands; create/edit/delete round-trip
+- [x] Custom slash commands / prompt templates — discover
+      `.spai/commands/*.md` and expand them into prompts with
+      `$ARGUMENTS` / `$1` substitution, composing with `SPAI.md` discovery
 - [x] First tagged release (`v0.1.0`) — cut a tag and publish prebuilt binaries
 - [x] Per-tool / per-MCP-server permission policy and allowlists
 - [x] Streaming MCP tool discovery + `/mcp` status slash command

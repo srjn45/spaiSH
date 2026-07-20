@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"spaish/internal/agent"
 	"spaish/internal/ai"
+	"spaish/internal/config"
 	"spaish/internal/pricing"
 	"spaish/internal/session"
 )
@@ -145,19 +147,104 @@ func handledCommands(t *testing.T, src string) map[string]bool {
 	return out
 }
 
+// TestUndoRedoInCommandSurface verifies /undo and /redo are wired into every
+// place a command must appear: commandDetails, knownCommands, helpText, and the
+// tab completer.
+func TestUndoRedoInCommandSurface(t *testing.T) {
+	for _, cmd := range []string{"/undo", "/redo"} {
+		if _, ok := commandDetails[cmd]; !ok {
+			t.Errorf("%s missing from commandDetails", cmd)
+		}
+		if !strings.Contains(helpText, cmd) {
+			t.Errorf("%s missing from helpText", cmd)
+		}
+		found := false
+		for _, k := range knownCommands() {
+			if k == cmd {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s missing from knownCommands", cmd)
+		}
+	}
+
+	// The completer must offer both built-ins.
+	c := newCompleter(t.TempDir())
+	got, _ := c.Do([]rune("/"), 1)
+	names := suffixes(got)
+	for _, want := range []string{"undo", "redo"} {
+		if !containsString(names, want) {
+			t.Errorf("completer should offer /%s, got %v", want, names)
+		}
+	}
+}
+
+// TestCompleterIncludesCustomCommands verifies discovered custom command names
+// are woven into tab completion.
+func TestCompleterIncludesCustomCommands(t *testing.T) {
+	c := newCompleter(t.TempDir(), "deploy", "review")
+	got, _ := c.Do([]rune("/"), 1)
+	names := suffixes(got)
+	if !containsString(names, "deploy") || !containsString(names, "review") {
+		t.Errorf("completer should include custom commands, got %v", names)
+	}
+}
+
+// TestCustomCommandDispatch verifies a discovered command matches by name; the
+// whitespace-only expansion path lets us exercise matching without a live turn.
+func TestCustomCommandDispatch(t *testing.T) {
+	r := &REPL{mode: agent.ModeManual, commands: []config.Command{{Name: "empty", Template: "   \n"}}}
+	out := captureStdout(t, func() { r.handleSlash("/empty") })
+	if !strings.Contains(out, "expanded to nothing") {
+		t.Errorf("matched custom command with empty expansion should report it, got %q", out)
+	}
+
+	// An unmatched name falls through to the typo hint.
+	out = captureStdout(t, func() { r.handleSlash("/nope-nope") })
+	if !strings.Contains(out, "unknown command") {
+		t.Errorf("unmatched command should report unknown, got %q", out)
+	}
+}
+
+// TestBuiltinBeatsCustom verifies a custom command named like a built-in cannot
+// shadow it: /clear still routes to the built-in clear path.
+func TestBuiltinBeatsCustom(t *testing.T) {
+	r := newREPLWithApp(t, "shadowtest", "")
+	r.commands = []config.Command{{Name: "clear", Template: "this custom template must not run"}}
+	out := captureStdout(t, func() { r.handleSlash("/clear") })
+	if !strings.Contains(out, "cleared") {
+		t.Errorf("built-in /clear should win over a custom command, got %q", out)
+	}
+	if strings.Contains(out, "custom template") {
+		t.Errorf("custom command must not run when a built-in matches, got %q", out)
+	}
+}
+
+// containsString reports whether want appears in xs, ignoring the trailing
+// space the prefix completer appends to each candidate.
+func containsString(xs []string, want string) bool {
+	for _, x := range xs {
+		if strings.TrimSpace(x) == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestSuggestCommand(t *testing.T) {
 	tests := []struct {
 		in   string
 		want string
 	}{
-		{"/hlep", "/help"},   // transposition
-		{"/mdoe", "/mode"}, // transposition
+		{"/hlep", "/help"},    // transposition
+		{"/mdoe", "/mode"},    // transposition
 		{"/moddel", "/model"}, // one insertion
 		{"/modle", "/mode"},   // nearer to /mode (1 edit) than /model (2 edits)
-		{"/quiy", "/quit"},   // one substitution
-		{"/exi", "/exit"},    // one deletion (alias)
-		{"/cost", "/cost"},   // exact (still returns itself)
-		{"/help", "/help"},   // exact
+		{"/quiy", "/quit"},    // one substitution
+		{"/exi", "/exit"},     // one deletion (alias)
+		{"/cost", "/cost"},    // exact (still returns itself)
+		{"/help", "/help"},    // exact
 		// Too far from any command -> no suggestion (plain error path).
 		{"/xyzzy", ""},
 		{"/deploy", ""},

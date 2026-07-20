@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,16 +14,19 @@ import (
 	"github.com/chzyer/readline"
 
 	"spaish/internal/agent"
+	"spaish/internal/config"
 	"spaish/internal/mcp"
+	"spaish/internal/permissions"
 	"spaish/internal/pricing"
 	"spaish/internal/protocol"
 	"spaish/internal/session"
 	"spaish/internal/tools"
 )
 
-// completer provides tab-completion for slash commands.
-func completer() *readline.PrefixCompleter {
-	return readline.NewPrefixCompleter(
+// completer provides tab-completion for slash commands. Any custom command
+// names are appended so Tab completes them alongside the built-ins.
+func completer(custom ...string) *readline.PrefixCompleter {
+	items := []readline.PrefixCompleterInterface{
 		readline.PcItem("/help"),
 		readline.PcItem("/mode", readline.PcItem("manual"), readline.PcItem("auto"), readline.PcItem("plan")),
 		readline.PcItem("/model", readline.PcItem("anthropic"), readline.PcItem("openai"), readline.PcItem("ollama")),
@@ -34,9 +38,15 @@ func completer() *readline.PrefixCompleter {
 		readline.PcItem("/history"),
 		readline.PcItem("/sessions"),
 		readline.PcItem("/init"),
+		readline.PcItem("/undo"),
+		readline.PcItem("/redo"),
 		readline.PcItem("/quit"),
 		readline.PcItem("/exit"),
-	)
+	}
+	for _, name := range custom {
+		items = append(items, readline.PcItem("/"+name))
+	}
+	return readline.NewPrefixCompleter(items...)
 }
 
 // replCompleter routes tab-completion between slash commands and @-path
@@ -53,9 +63,10 @@ type replCompleter struct {
 	slash readline.AutoCompleter
 }
 
-// newCompleter builds the REPL's combined completer rooted at cwd.
-func newCompleter(cwd string) *replCompleter {
-	return &replCompleter{cwd: cwd, slash: completer()}
+// newCompleter builds the REPL's combined completer rooted at cwd. Any custom
+// command names are woven into the slash-command completion.
+func newCompleter(cwd string, custom ...string) *replCompleter {
+	return &replCompleter{cwd: cwd, slash: completer(custom...)}
 }
 
 // Do implements readline.AutoCompleter. See replCompleter for the routing rules.
@@ -141,6 +152,7 @@ func (r *REPL) handleSlash(line string) bool {
 			break
 		}
 		fmt.Print(helpText)
+		r.printCustomCommands()
 
 	case "/mode":
 		if len(args) == 0 {
@@ -180,6 +192,8 @@ func (r *REPL) handleSlash(line string) bool {
 
 	case "/clear":
 		r.runSession("clear")
+		// Wiping the conversation also discards its checkpoint history.
+		_ = session.NewCheckpointStore(r.sessionID, r.cwd).Remove()
 
 	case "/compact":
 		r.runSession("compact")
@@ -193,7 +207,18 @@ func (r *REPL) handleSlash(line string) bool {
 	case "/init":
 		r.handleInit()
 
+	case "/undo":
+		r.handleUndo()
+
+	case "/redo":
+		r.handleRedo()
+
 	default:
+		// A built-in always wins (handled above); only unmatched names reach here,
+		// where a discovered custom command may claim them before the typo hint.
+		if r.runCustomCommand(cmd, args) {
+			break
+		}
 		if s := suggestCommand(cmd); s != "" {
 			fmt.Printf("%s unknown command %q — did you mean %s?\n", red("✗"), cmd, cyan(s))
 		} else {
@@ -201,6 +226,98 @@ func (r *REPL) handleSlash(line string) bool {
 		}
 	}
 	return false
+}
+
+// runCustomCommand looks cmd up among the discovered custom commands and, on a
+// match, expands its template against args and runs it as a normal agent turn —
+// so it inherits SPAI.md project context and the existing tool-permission gates.
+// It reports whether a custom command handled the input.
+func (r *REPL) runCustomCommand(cmd string, args []string) bool {
+	name := strings.ToLower(strings.TrimPrefix(cmd, "/"))
+	for _, c := range r.commands {
+		if c.Name == name {
+			prompt := config.ExpandCommand(c.Template, args)
+			if strings.TrimSpace(prompt) == "" {
+				fmt.Printf("%s custom command %s expanded to nothing\n", red("✗"), cyan(cmd))
+				return true
+			}
+			r.runTurn(prompt)
+			return true
+		}
+	}
+	return false
+}
+
+// handleUndo reverts the last file mutation recorded for this session, gated at
+// TierWrite (a confirm in manual mode; auto/plan skip). It prints the restored
+// paths, or a notice when there is nothing to undo.
+func (r *REPL) handleUndo() {
+	if !r.confirmSlashWrite("/undo") {
+		fmt.Println(dim("cancelled"))
+		return
+	}
+	store := session.NewCheckpointStore(r.sessionID, r.cwd)
+	res, err := store.Undo()
+	if errors.Is(err, session.ErrNothingToUndo) {
+		fmt.Println(dim("nothing to undo"))
+		return
+	}
+	if err != nil {
+		fmt.Printf("%s %v\n", red("✗"), err)
+		return
+	}
+	fmt.Printf("%s undid %s\n", cyan("↩"), r.formatPaths(res.Paths))
+}
+
+// handleRedo re-applies the last undone file mutation, gated like handleUndo.
+func (r *REPL) handleRedo() {
+	if !r.confirmSlashWrite("/redo") {
+		fmt.Println(dim("cancelled"))
+		return
+	}
+	store := session.NewCheckpointStore(r.sessionID, r.cwd)
+	res, err := store.Redo()
+	if errors.Is(err, session.ErrNothingToRedo) {
+		fmt.Println(dim("nothing to redo"))
+		return
+	}
+	if err != nil {
+		fmt.Printf("%s %v\n", red("✗"), err)
+		return
+	}
+	fmt.Printf("%s redid %s\n", cyan("↪"), r.formatPaths(res.Paths))
+}
+
+// confirmSlashWrite gates a mutating slash command. When the command is gated
+// (SlashTier) and the REPL is in manual mode, it prompts once; auto and plan
+// mode skip the prompt, matching how every other Write action is gated.
+func (r *REPL) confirmSlashWrite(name string) bool {
+	tier, gated := permissions.SlashTier(name)
+	if !gated || r.mode != agent.ModeManual {
+		return true
+	}
+	return PromptConfirm(protocol.ConfirmRequest{
+		Command: name,
+		Tier:    tier.String(),
+		Display: tier.Display(),
+	})
+}
+
+// formatPaths renders affected paths relative to the working directory when
+// possible, for a compact one-line summary.
+func (r *REPL) formatPaths(paths []string) string {
+	rels := make([]string, len(paths))
+	for i, p := range paths {
+		if rel, err := filepath.Rel(r.cwd, p); err == nil && !strings.HasPrefix(rel, "..") {
+			rels[i] = rel
+		} else {
+			rels[i] = p
+		}
+	}
+	if len(rels) == 1 {
+		return rels[0]
+	}
+	return fmt.Sprintf("%d files: %s", len(rels), strings.Join(rels, ", "))
 }
 
 // knownCommands is the full set of slash commands (canonical plus aliases),
@@ -507,6 +624,19 @@ func isShellSession(id, shellID string) bool {
 	return true
 }
 
+// printCustomCommands lists any discovered .spai/commands/*.md commands under a
+// "Custom commands" heading, appended to the built-in help.
+func (r *REPL) printCustomCommands() {
+	if len(r.commands) == 0 {
+		return
+	}
+	fmt.Println("Custom commands (.spai/commands):")
+	for _, c := range r.commands {
+		fmt.Printf("  %s\n", cyan("/"+c.Name))
+	}
+	fmt.Println()
+}
+
 // printCommandHelp prints the detailed help for a single slash command, as
 // requested via `/help <command>`. The leading slash is optional.
 func (r *REPL) printCommandHelp(name string) {
@@ -536,6 +666,8 @@ var commandDetails = map[string]string{
 	"/history":  "print the full transcript recorded for this session.",
 	"/sessions": "list recent sessions, marking the current, pinned, and shell sessions.",
 	"/init":     "scaffold a SPAI.md project-context file in the current working directory.",
+	"/undo":     "revert the last file mutation made by the agent (create/edit/delete round-trip).",
+	"/redo":     "re-apply the last mutation reverted by /undo.",
 	"/quit":     "leave the session (aliases: /exit, /q; Ctrl+D also exits).",
 }
 
@@ -552,6 +684,8 @@ Commands:
   /history           print the session transcript
   /sessions          list recent sessions (current, pinned, shell)
   /init              scaffold a SPAI.md project-context file here
+  /undo              revert the last file mutation (create/edit/delete)
+  /redo              re-apply the last mutation reverted by /undo
   /quit, /exit       leave the session
 
 References:

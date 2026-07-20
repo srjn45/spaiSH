@@ -31,8 +31,8 @@ var recommendedModels = []struct {
 type Manager struct {
 	state       *State
 	client      *http.Client
-	ollamaURL   string               // overridable for tests; defaults to registry endpoint
-	stepCheckFn func(string) bool    // nil = run real shell check; overridable for tests
+	ollamaURL   string            // overridable for tests; defaults to registry endpoint
+	stepCheckFn func(string) bool // nil = run real shell check; overridable for tests
 }
 
 // NewManager creates a Manager using the Ollama endpoint from the registry.

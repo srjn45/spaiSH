@@ -212,12 +212,49 @@ Scaffold a
 .I SPAI.md
 project-context file in the current working directory.
 .TP
+.B /undo
+Revert the last file mutation made by the agent
+.RB ( write_file ,
+.BR edit_file ,
+.BR apply_patch ,
+or
+.BR multi_edit ).
+Original bytes are snapshotted before each write under
+.IR .spai/checkpoints/<session>/ ;
+created, edited, and deleted files all round-trip. Prompts once in
+.B manual
+mode.
+.TP
+.B /redo
+Re-apply the last mutation reverted by
+.BR /undo .
+.TP
 .B /quit
 .TQ
 .B /exit
 .TQ
 .B /q
 Leave the session.
+.SS Custom slash commands
+Markdown files placed in
+.I .spai/commands/
+become user-defined slash commands: a file named
+.I deploy.md
+is invoked as
+.BR /deploy .
+The file body is a prompt template expanded and run as a normal agent turn, so
+it inherits
+.I SPAI.md
+project context and the usual permission gating. In the template,
+.B $ARGUMENTS
+expands to all arguments joined by spaces,
+.BR $1 ,
+.BR $2 ,
+\&... to the individual positional arguments, and
+.B $$
+to a literal
+.BR $ .
+A built-in command always takes precedence over a custom one of the same name.
 .SS File references
 Type
 .B @path

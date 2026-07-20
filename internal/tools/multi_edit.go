@@ -45,7 +45,7 @@ type multiEditArgs struct {
 	DryRun      bool   `json:"dry_run"`
 }
 
-func (MultiEdit) Run(_ context.Context, input json.RawMessage) (string, error) {
+func (MultiEdit) Run(ctx context.Context, input json.RawMessage) (string, error) {
 	var args multiEditArgs
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "", fmt.Errorf("invalid input: %w", err)
@@ -87,12 +87,16 @@ func (MultiEdit) Run(_ context.Context, input json.RawMessage) (string, error) {
 	}
 
 	type fileResult struct {
-		path  string
-		count int
+		path       string
+		count      int
+		newContent string
 	}
 	var changed []fileResult
 	totalMatches := 0
 
+	// Pass 1: find matches and compute the replacement for each file. Nothing is
+	// written yet, so every to-change file can be snapshotted together as one
+	// atomic checkpoint before Pass 2 mutates any of them.
 	for _, fpath := range files {
 		data, readErr := os.ReadFile(fpath)
 		if readErr != nil {
@@ -105,19 +109,31 @@ func (MultiEdit) Run(_ context.Context, input json.RawMessage) (string, error) {
 		}
 		n := len(matches)
 		totalMatches += n
+		changed = append(changed, fileResult{
+			path:       fpath,
+			count:      n,
+			newContent: re.ReplaceAllString(content, args.Replacement),
+		})
+	}
 
-		if !args.DryRun {
-			newContent := re.ReplaceAllString(content, args.Replacement)
-			info, _ := os.Stat(fpath)
+	// Pass 2: write the changed files. Snapshot them all first so /undo reverts
+	// the whole multi_edit as a single step.
+	if !args.DryRun && len(changed) > 0 {
+		paths := make([]string, len(changed))
+		for i, r := range changed {
+			paths[i] = r.path
+		}
+		snapshot(ctx, paths...)
+		for _, r := range changed {
+			info, _ := os.Stat(r.path)
 			mode := os.FileMode(0644)
 			if info != nil {
 				mode = info.Mode()
 			}
-			if writeErr := os.WriteFile(fpath, []byte(newContent), mode); writeErr != nil {
-				return "", fmt.Errorf("write %s: %w", fpath, writeErr)
+			if writeErr := os.WriteFile(r.path, []byte(r.newContent), mode); writeErr != nil {
+				return "", fmt.Errorf("write %s: %w", r.path, writeErr)
 			}
 		}
-		changed = append(changed, fileResult{path: fpath, count: n})
 	}
 
 	if len(changed) == 0 {
