@@ -55,20 +55,16 @@ The core agent is built and working:
       package coverage). The `RunAgent`/`RunSession`/`streamText` event-loop
       and interactive prompts (`main`, `init.go`) remain out of scope —
       candidates for a future, heavier test-harness task
+- [x] Provider & tool breadth — a new `web_search` tool
+      (`internal/tools/web_search.go`) using DuckDuckGo's keyless HTML
+      endpoint (title/url/snippet results, capped at 10, `TierRead`), and
+      `code_exec` language support extended from Python/Node to also cover
+      Ruby and Go (`go run`), with `Description`/`Schema` updated accordingly
 
 ## Next
 
-### Provider & tool breadth
-
-- [ ] `web_search` tool — a new `internal/tools/web_search.go` tool that
-      queries the web and returns a capped list of title/url/snippet results
-      (no API key required; DuckDuckGo's HTML endpoint is a reasonable
-      backend), complementing the existing `web_fetch` (which requires an
-      exact URL already in hand)
-- [ ] `code_exec` language breadth — extend `interpreterFor` in
-      `internal/tools/code_exec.go` (currently python and node/javascript
-      only) to add at least Ruby and Go (`go run`), updating the tool's
-      `Description`/`Schema` accordingly
+Every seeded "Next" item is now shipped — this section is intentionally empty
+until new directions are chosen.
 
 ## Recently completed
 
@@ -113,6 +109,10 @@ The core agent is built and working:
       42.3%)
 - [x] `cmd/spai` session, disclaimer, and git-branch helper test coverage
       (6.8% → 29.4%)
+- [x] `web_search` tool — keyless DuckDuckGo HTML-backend search, capped
+      title/url/snippet results
+- [x] `code_exec` language breadth — added Ruby and Go (`go run`) alongside
+      Python and Node
 
 ## Parked ideas
 
