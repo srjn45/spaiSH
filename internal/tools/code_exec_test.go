@@ -14,7 +14,7 @@ import (
 // installed, so CI machines missing python3/node pass cleanly rather than fail.
 func requireInterpreter(t *testing.T, language string) {
 	t.Helper()
-	if _, _, err := interpreterFor(language); err != nil {
+	if _, _, _, err := interpreterFor(language); err != nil {
 		t.Skipf("skipping: %v", err)
 	}
 }
@@ -43,6 +43,8 @@ func TestCodeExecSuccess(t *testing.T) {
 		{"python", "python", "print('hello from python')", "hello from python"},
 		{"node", "node", "console.log('hello from node')", "hello from node"},
 		{"javascript alias", "javascript", "console.log(1 + 2)", "3"},
+		{"ruby", "ruby", "puts 'hello from ruby'", "hello from ruby"},
+		{"go", "go", "package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"hello from go\") }", "hello from go"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -124,7 +126,7 @@ func TestCodeExecTimeoutClamp(t *testing.T) {
 
 func TestCodeExecUnsupportedLanguage(t *testing.T) {
 	_, err := CodeExec{}.Run(context.Background(),
-		json.RawMessage(`{"language":"ruby","code":"puts 1"}`))
+		json.RawMessage(`{"language":"rust","code":"fn main() {}"}`))
 	if err == nil {
 		t.Fatal("expected error for unsupported language")
 	}
@@ -163,7 +165,7 @@ func TestInterpreterForNotFound(t *testing.T) {
 	_, py3 := exec.LookPath("python3")
 	_, py := exec.LookPath("python")
 	if py3 != nil && py != nil {
-		if _, _, e := interpreterFor("python"); e == nil {
+		if _, _, _, e := interpreterFor("python"); e == nil {
 			t.Error("expected not-found error when python is absent")
 		}
 	}
