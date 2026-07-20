@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"spaish/internal/sandbox"
 )
 
 // Code execution timeouts. The model may request a shorter timeout, but never a
@@ -28,7 +30,16 @@ const (
 // directory (so scratch files don't pollute the project) that is deleted after
 // the run. Treat code_exec as exactly as dangerous as bash; it is classified at
 // the same top tier for that reason.
-type CodeExec struct{}
+//
+// When Sandbox is set and enabled, the ephemeral process IS wrapped in the
+// execution sandbox (filesystem/network containment). That is an opt-in
+// hardening layer under the permission gate, not a change to how code_exec is
+// gated. Sandbox is nil-safe: a zero-value CodeExec sandboxes nothing.
+type CodeExec struct {
+	// Sandbox restricts the spawned process. nil (or a disabled sandbox) means
+	// no wrapping.
+	Sandbox sandbox.Sandbox
+}
 
 func (CodeExec) Name() string { return "code_exec" }
 
@@ -38,11 +49,12 @@ func (CodeExec) Description() string {
 		"code runs in a fresh temporary directory that is deleted afterward, so " +
 		"you may write scratch files freely without touching the project. A hard " +
 		"timeout (default 15s, max 30s) kills runaway or infinite scripts.\n\n" +
-		"SECURITY: This is NOT a sandbox. The code runs with the same privileges " +
-		"as this agent — identical to the `bash` tool: full filesystem, network, " +
-		"and process access. It is not seccomp/container/chroot isolated. The only " +
-		"differences from bash are a throwaway working directory and a timeout. " +
-		"Do not treat it as a safety boundary.\n\n" +
+		"SECURITY: By default this is NOT a sandbox. Unless the operator has " +
+		"explicitly enabled the opt-in execution sandbox, the code runs with the " +
+		"same privileges as this agent — identical to the `bash` tool: full " +
+		"filesystem, network, and process access, with no seccomp/container/chroot " +
+		"isolation beyond a throwaway working directory and a timeout. Do not treat " +
+		"it as a safety boundary by default.\n\n" +
 		"Fields: `language` (one of \"python\", \"node\", \"javascript\", \"ruby\", " +
 		"\"go\") and `code` (the source to run). Optional `timeout_seconds` shortens " +
 		"the timeout; values above the 30s cap are clamped. Use for quick " +
@@ -63,7 +75,7 @@ func (CodeExec) Schema() map[string]any {
 	}, "language", "code")
 }
 
-func (CodeExec) Run(ctx context.Context, input json.RawMessage) (string, error) {
+func (c CodeExec) Run(ctx context.Context, input json.RawMessage) (string, error) {
 	var args struct {
 		Language       string `json:"language"`
 		Code           string `json:"code"`
@@ -108,6 +120,16 @@ func (CodeExec) Run(ctx context.Context, input json.RawMessage) (string, error) 
 	var out strings.Builder
 	cmd.Stdout = &out
 	cmd.Stderr = &out
+
+	// Containment is applied here, AFTER the permission gate. The throwaway temp
+	// dir is cmd.Dir, so the sandbox automatically keeps it writable. Failure to
+	// establish the sandbox is fatal — we refuse rather than run unsandboxed.
+	if c.Sandbox != nil && c.Sandbox.Enabled() {
+		if err := c.Sandbox.Wrap(cmd); err != nil {
+			return "", fmt.Errorf("sandbox setup failed (refusing to run unsandboxed): %w", err)
+		}
+	}
+
 	runErr := cmd.Run()
 
 	result := tailTrim(out.String(), maxToolOutput)

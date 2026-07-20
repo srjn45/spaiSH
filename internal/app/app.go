@@ -21,6 +21,7 @@ import (
 	"spaish/internal/mcp"
 	"spaish/internal/permissions"
 	"spaish/internal/protocol"
+	"spaish/internal/sandbox"
 	"spaish/internal/session"
 	"spaish/internal/tools"
 )
@@ -342,6 +343,33 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 		}
 	}
 
+	policy := permissions.NewPolicy(config.MergeProjectPermissions(
+		a.cfg.Permissions.Tools,
+		a.cfg.Permissions.MCPServers,
+		a.cfg.Permissions.AllowCommands,
+		req.WorkingDir,
+	))
+
+	// Build the execution sandbox once from config. Fail closed: an enabled but
+	// misconfigured sandbox aborts the run rather than executing unsandboxed. The
+	// sandbox is layered UNDER the permission gate above — it never changes how
+	// tool calls are classified or confirmed.
+	sb, err := sandbox.New(sandbox.Config{
+		Enabled:      a.cfg.Sandbox.Enabled,
+		AllowNetwork: a.cfg.Sandbox.AllowNetwork,
+		AllowPaths:   a.cfg.Sandbox.AllowPaths,
+		Backend:      a.cfg.Sandbox.Backend,
+	})
+	if err != nil {
+		return fmt.Errorf("sandbox init: %w", err)
+	}
+	// Only exempt allow-listed bash commands from the sandbox when the operator
+	// opted into that carve-out; otherwise every command is contained.
+	var trusted func(cmd string) bool
+	if a.cfg.Sandbox.TrustAllowlistedCommands {
+		trusted = policy.MatchesAllowCommand
+	}
+
 	agentCfg := agent.Config{
 		Mode:          mode,
 		MaxIterations: a.cfg.Agent.MaxIterations,
@@ -349,15 +377,12 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 		WorkingDir:    req.WorkingDir,
 		GitBranch:     req.GitBranch,
 		Stdin:         req.Stdin,
-		Policy: permissions.NewPolicy(config.MergeProjectPermissions(
-			a.cfg.Permissions.Tools,
-			a.cfg.Permissions.MCPServers,
-			a.cfg.Permissions.AllowCommands,
-			req.WorkingDir,
-		)),
+		Policy:        policy,
+		Sandbox:       sb,
+		Trusted:       trusted,
 	}
 
-	ag := agent.NewWithRegistry(provider, agentCfg, confirmFn, a.toolRegistry())
+	ag := agent.NewWithRegistry(provider, agentCfg, confirmFn, a.toolRegistry(sb, trusted))
 
 	var fullText, outputText strings.Builder
 	for resp := range ag.Run(ctx, req.Agent, sess) {
@@ -379,11 +404,13 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 	return nil
 }
 
-// toolRegistry returns the built-in tools plus any tools discovered from the
-// configured MCP servers. The MCP servers are spawned once per session.
-func (a *App) toolRegistry() *tools.Registry {
+// toolRegistry returns the built-in tools (with the execution sandbox injected
+// into bash/code_exec) plus any tools discovered from the configured MCP
+// servers. A nil/disabled sandbox leaves those tools unwrapped. The MCP servers
+// are spawned once per session.
+func (a *App) toolRegistry(sb sandbox.Sandbox, trusted func(cmd string) bool) *tools.Registry {
 	a.ensureMCP()
-	reg := tools.DefaultRegistry()
+	reg := tools.RegistryWithSandbox(sb, trusted)
 	reg.Add(a.mcpTools...)
 	return reg
 }

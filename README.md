@@ -144,6 +144,25 @@ exponential backoff and jitter, honouring a server `Retry-After` header, across
 all providers. Tune it in the optional `[retry]` section of `spaid.toml`
 (`max_attempts`, `base_delay_ms`, `max_delay_ms`).
 
+As **defense-in-depth under** the permission gate (never a replacement for it),
+`code_exec` and untrusted `bash` commands can be run inside an opt-in execution
+sandbox that restricts filesystem and network access. It is **off by default**
+and enforced on Linux (native Landlock + seccomp, or `bwrap` when present); on
+other platforms it is a no-op. Enable and tune it in the optional `[sandbox]`
+section of `spaid.toml`:
+
+```toml
+[sandbox]
+enabled = true                     # master opt-in (default false)
+allow_network = false              # keep network open (default false = deny)
+allow_paths = ["/extra/writable"]  # extra writable dirs (cwd + code_exec temp always writable)
+backend = "auto"                   # "auto" | "bwrap" | "landlock" | "off"
+trust_allowlisted_commands = false # exempt [permissions].allow_commands from the sandbox
+```
+
+When enabled but the platform cannot enforce it, the command fails closed rather
+than running unsandboxed.
+
 Sessions are file-backed and auto-compact when they grow large.
 
 ---

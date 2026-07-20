@@ -62,11 +62,7 @@ self-contained; Tier 2 adds meaningful features; Tier 3 is polish.
 
 ### Tier 1 — high leverage, mostly self-contained
 
-- [ ] Optional execution sandbox — `bash` and `code_exec` are
-      explicitly not sandboxed. Add an opt-in Linux sandbox (Landlock +
-      seccomp, or `bwrap` when present) restricting filesystem and
-      network access for `code_exec` and untrusted `bash`. Files:
-      `internal/tools/{bash,code_exec}.go`, new `internal/sandbox/`.
+_All Tier 1 items shipped — see Recently completed._
 
 ### Tier 2 — meaningful features
 
@@ -95,6 +91,13 @@ self-contained; Tier 2 adds meaningful features; Tier 3 is polish.
 
 ## Recently completed
 
+- [x] Optional execution sandbox — an opt-in, default-OFF Linux sandbox
+      (native Landlock + seccomp, or `bwrap` when present) restricting
+      filesystem and network access for `code_exec` and untrusted `bash`,
+      behind build tags with a compiling no-op fallback on non-Linux.
+      Layered under the permission gate as defense-in-depth — it never
+      replaces a confirmation. Tunable via the optional `[sandbox]`
+      config section.
 - [x] Checkpoint & `/undo` for file edits — snapshot each file before
       `write_file`/`edit_file`/`apply_patch`/`multi_edit` mutates it
       (originals under `.spai/checkpoints/<session>/`), with `/undo`

@@ -144,3 +144,56 @@ context_window = 30`
 		t.Errorf("ContextWindow: got %d, want 30", cfg.Spaish.ContextWindow)
 	}
 }
+
+// TestLoadSandboxSection verifies the [sandbox] section parses into SandboxConfig.
+func TestLoadSandboxSection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spaid.toml")
+	os.WriteFile(path, []byte(`
+[sandbox]
+enabled = true
+allow_network = false
+allow_paths = ["/tmp", "/work"]
+backend = "bwrap"
+trust_allowlisted_commands = true
+`), 0644)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Sandbox.Enabled {
+		t.Errorf("Sandbox.Enabled: got false, want true")
+	}
+	if cfg.Sandbox.AllowNetwork {
+		t.Errorf("Sandbox.AllowNetwork: got true, want false")
+	}
+	if len(cfg.Sandbox.AllowPaths) != 2 || cfg.Sandbox.AllowPaths[0] != "/tmp" {
+		t.Errorf("Sandbox.AllowPaths: got %v", cfg.Sandbox.AllowPaths)
+	}
+	if cfg.Sandbox.Backend != "bwrap" {
+		t.Errorf("Sandbox.Backend: got %q, want bwrap", cfg.Sandbox.Backend)
+	}
+	if !cfg.Sandbox.TrustAllowlistedCommands {
+		t.Errorf("Sandbox.TrustAllowlistedCommands: got false, want true")
+	}
+}
+
+// TestSandboxDefaultsDisabled verifies an absent [sandbox] section yields the
+// disabled zero value.
+func TestSandboxDefaultsDisabled(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spaid.toml")
+	os.WriteFile(path, []byte("[provider]\nmodel = \"x\"\n"), 0644)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Sandbox.Enabled {
+		t.Errorf("absent [sandbox] should be disabled, got Enabled=true")
+	}
+	if cfg.Sandbox.Backend != "" {
+		t.Errorf("absent [sandbox] Backend should be empty, got %q", cfg.Sandbox.Backend)
+	}
+}
