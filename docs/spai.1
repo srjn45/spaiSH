@@ -229,6 +229,18 @@ mode.
 Re-apply the last mutation reverted by
 .BR /undo .
 .TP
+.B /jobs [\fIid\fR]
+List all background bash jobs (id, status, command).
+With an optional
+.I id
+argument, show the full captured output and exit code for that job.
+Background jobs are started by the
+.B bash
+tool when called with
+.B run_in_background=true
+\(em the command runs without blocking and its output is buffered in memory.
+The same permission gate applies to background commands as to foreground ones.
+.TP
 .B /quit
 .TQ
 .B /exit

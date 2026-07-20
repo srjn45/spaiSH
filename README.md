@@ -107,6 +107,7 @@ Run `spai` with no arguments for a multi-turn session. Slash commands:
 | `/compact` | summarise and compact the session |
 | `/history` | print the session history |
 | `/undo`, `/redo` | revert / re-apply the agent's last file mutation (create, edit, or delete) |
+| `/jobs [id]` | list background bash jobs (id, status, command); `/jobs <id>` to inspect output |
 | `/help`, `/quit` | help (`/help <command>` for detail), exit |
 
 Drop a Markdown file in `.spai/commands/` to add your own slash command: `.spai/commands/review.md` becomes `/review`. The file body is a prompt template — `$ARGUMENTS` expands to everything after the command and `$1`, `$2`, … to individual arguments — that runs as a normal agent turn (inheriting `SPAI.md` context and the usual permission gating).
@@ -138,6 +139,12 @@ You can layer a **configurable policy** on top of the tier gate in the
 `[permissions]` section of `spaid.toml` — allow/confirm/deny per tool or per MCP
 server, plus a bash `allow_commands` prefix allowlist (e.g. `git status`) that
 bypasses confirmation. See the annotated `config/spaid.toml` for the keys.
+
+The `bash` tool accepts an optional `run_in_background` boolean. When `true`,
+the command is started without blocking the current turn and returns a job id
+immediately. Output is streamed into an in-memory buffer and the `/jobs` REPL
+command shows the status and captured output. The same permission-classification
+gate applies to background commands as to foreground ones.
 
 OpenAI-compatible reasoning models (o1, o3, o4-mini, …) support a
 `reasoning_effort` knob ("low", "medium", "high") that controls thinking

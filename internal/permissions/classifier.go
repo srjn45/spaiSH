@@ -129,12 +129,14 @@ var gitValueFlags = map[string]bool{
 	"--git-dir": true, "--work-tree": true, "--namespace": true,
 }
 
-// slashTiers gives the permission tier for the built-in slash commands that the
-// tier system gates. Only mutating commands appear here; everything else is
-// ungated (read-only REPL output).
+// slashTiers gives the permission tier for the built-in slash commands. Mutating
+// commands (/undo, /redo) appear at TierWrite; read-only commands that are
+// queryable by external callers appear at TierRead. Commands absent from this
+// map are ungated (pure REPL display output).
 var slashTiers = map[string]Tier{
 	"/undo": TierWrite,
 	"/redo": TierWrite,
+	"/jobs": TierRead,
 }
 
 // SlashTier returns the tier for a built-in slash command, and false for

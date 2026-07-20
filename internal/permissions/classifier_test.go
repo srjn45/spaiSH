@@ -62,6 +62,8 @@ func TestSlashTier(t *testing.T) {
 		{"/undo", permissions.TierWrite, true},
 		{"/redo", permissions.TierWrite, true},
 		{"undo", permissions.TierWrite, true}, // leading slash optional
+		{"/jobs", permissions.TierRead, true}, // read-only background job viewer
+		{"jobs", permissions.TierRead, true},  // leading slash optional
 		{"/help", 0, false},                   // read-only command: ungated
 		{"/deploy", 0, false},                 // custom command: not tier-gated here
 	}

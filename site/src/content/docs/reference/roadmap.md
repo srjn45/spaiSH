@@ -66,8 +66,6 @@ _All Tier 1 items shipped — see Recently completed._
 
 ### Tier 2 — meaningful features
 
-- [ ] Background / long-running `bash` — a `run_in_background` option, a
-      `/jobs` view, and streamed output. Files: `internal/tools/bash.go`.
 - [ ] `gh` / PR integration tool — open branches, commit, and create
       PRs as an extension of the structured `git` tool.
 - [ ] Named specialized subagents — today `delegate` is a single
@@ -88,6 +86,13 @@ _All Tier 1 items shipped — see Recently completed._
 
 ## Recently completed
 
+- [x] Background / long-running `bash` — a `run_in_background` boolean on the
+      `bash` tool starts commands without blocking the agent turn, captures
+      combined stdout+stderr in an in-memory job registry keyed by integer id,
+      and returns the job id immediately. A new `/jobs` REPL command lists all
+      background jobs (id, status, command) and inspects one by id with full
+      captured output. The same permission-classification gate applies to
+      background commands as to foreground ones.
 - [x] OpenAI `reasoning_effort` passthrough — a new `reasoning_effort` config
       key in `[provider]` (spaid.toml) passes the effort level ("low",
       "medium", "high") to OpenAI-compatible reasoning models (o1, o3,

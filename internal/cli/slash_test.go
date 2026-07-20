@@ -1,18 +1,22 @@
 package cli
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"spaish/internal/agent"
 	"spaish/internal/ai"
 	"spaish/internal/config"
 	"spaish/internal/pricing"
 	"spaish/internal/session"
+	"spaish/internal/tools"
 )
 
 // suffixes flattens a [][]rune completion result into strings for comparison.
@@ -343,6 +347,138 @@ func TestBuildCostReportUnknownModel(t *testing.T) {
 	if !strings.Contains(rep.cost, "unknown pricing") {
 		t.Errorf("unknown model cost line should mention 'unknown pricing', got: %q", rep.cost)
 	}
+}
+
+// ---------- /jobs ----------
+
+func TestHandleSlashJobsEmpty(t *testing.T) {
+	restore := tools.ReplaceJobs(&tools.JobRegistry{})
+	defer restore()
+
+	r := &REPL{mode: agent.ModeManual}
+	out := captureStdout(t, func() { r.handleSlash("/jobs") })
+	if !strings.Contains(out, "no background jobs") {
+		t.Errorf("/jobs on empty registry should say 'no background jobs', got %q", out)
+	}
+}
+
+func TestHandleSlashJobsList(t *testing.T) {
+	reg := &tools.JobRegistry{}
+	restore := tools.ReplaceJobs(reg)
+	defer restore()
+
+	b := tools.Bash{}
+	input, _ := json.Marshal(map[string]any{
+		"command":           "echo list-test",
+		"run_in_background": true,
+	})
+	if _, err := b.Run(context.Background(), input); err != nil {
+		t.Fatalf("unexpected error starting background job: %v", err)
+	}
+
+	r := &REPL{mode: agent.ModeManual}
+	out := captureStdout(t, func() { r.handleSlash("/jobs") })
+	if !strings.Contains(out, "echo list-test") {
+		t.Errorf("/jobs should list the job command, got %q", out)
+	}
+	if !strings.Contains(out, "STATUS") {
+		t.Errorf("/jobs should print a header with STATUS, got %q", out)
+	}
+}
+
+func TestHandleSlashJobsInspect(t *testing.T) {
+	reg := &tools.JobRegistry{}
+	restore := tools.ReplaceJobs(reg)
+	defer restore()
+
+	b := tools.Bash{}
+	input, _ := json.Marshal(map[string]any{
+		"command":           "echo inspect-output",
+		"run_in_background": true,
+	})
+	b.Run(context.Background(), input)
+
+	jobs := reg.List()
+	if len(jobs) == 0 {
+		t.Fatal("no jobs registered")
+	}
+	j := jobs[0]
+	waitJobDone(t, j, 5*time.Second)
+
+	r := &REPL{mode: agent.ModeManual}
+	out := captureStdout(t, func() { r.handleSlash("/jobs " + j.ID) })
+	if !strings.Contains(out, "inspect-output") {
+		t.Errorf("/jobs <id> should show captured output, got %q", out)
+	}
+	if !strings.Contains(out, "done") {
+		t.Errorf("/jobs <id> should show 'done' status, got %q", out)
+	}
+}
+
+func TestHandleSlashJobsInspectUnknown(t *testing.T) {
+	restore := tools.ReplaceJobs(&tools.JobRegistry{})
+	defer restore()
+
+	r := &REPL{mode: agent.ModeManual}
+	out := captureStdout(t, func() { r.handleSlash("/jobs 9999") })
+	if !strings.Contains(out, "no job with id") {
+		t.Errorf("/jobs <unknown-id> should report an error, got %q", out)
+	}
+}
+
+// TestJobsInCommandSurface checks /jobs is wired into all the places a command
+// must appear: commandDetails, helpText, and the tab completer.
+func TestJobsInCommandSurface(t *testing.T) {
+	if _, ok := commandDetails["/jobs"]; !ok {
+		t.Error("/jobs missing from commandDetails")
+	}
+	if !strings.Contains(helpText, "/jobs") {
+		t.Error("/jobs missing from helpText")
+	}
+	c := newCompleter(t.TempDir())
+	got, _ := c.Do([]rune("/"), 1)
+	names := suffixes(got)
+	if !containsString(names, "jobs") {
+		t.Errorf("completer should offer /jobs, got %v", names)
+	}
+}
+
+// ---------- tailLines ----------
+
+func TestTailLines(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		n     int
+		want  string
+	}{
+		{"empty", "", 5, ""},
+		{"fewer than n", "a\nb\nc", 5, "a\nb\nc"},
+		{"exactly n", "a\nb\nc", 3, "a\nb\nc"},
+		{"more than n truncates", "a\nb\nc\nd\ne", 3, "[...]\nc\nd\ne"},
+		{"trailing newline stripped", "a\nb\n", 5, "a\nb"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tailLines(tc.input, tc.n)
+			if got != tc.want {
+				t.Errorf("tailLines(%q, %d) = %q, want %q", tc.input, tc.n, got, tc.want)
+			}
+		})
+	}
+}
+
+// waitJobDone polls until j is no longer running or the timeout expires.
+func waitJobDone(t *testing.T, j *tools.Job, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if j.StatusSnapshot() != tools.JobRunning {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("job %s still running after %s", j.ID, timeout)
 }
 
 func mustWrite(t *testing.T, path string) {
