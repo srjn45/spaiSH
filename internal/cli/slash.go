@@ -40,6 +40,7 @@ func completer(custom ...string) *readline.PrefixCompleter {
 		readline.PcItem("/init"),
 		readline.PcItem("/undo"),
 		readline.PcItem("/redo"),
+		readline.PcItem("/jobs"),
 		readline.PcItem("/quit"),
 		readline.PcItem("/exit"),
 	}
@@ -213,6 +214,9 @@ func (r *REPL) handleSlash(line string) bool {
 	case "/redo":
 		r.handleRedo()
 
+	case "/jobs":
+		r.handleJobs(args)
+
 	default:
 		// A built-in always wins (handled above); only unmatched names reach here,
 		// where a discovered custom command may claim them before the typo hint.
@@ -246,6 +250,67 @@ func (r *REPL) runCustomCommand(cmd string, args []string) bool {
 		}
 	}
 	return false
+}
+
+// handleJobs lists all background jobs or, when an id argument is given,
+// shows the full output and status of one job. /jobs is read-only and never
+// calls confirmSlashWrite.
+func (r *REPL) handleJobs(args []string) {
+	if len(args) > 0 {
+		r.handleJobInspect(args[0])
+		return
+	}
+	jobs := tools.Jobs().List()
+	if len(jobs) == 0 {
+		fmt.Println(dim("no background jobs"))
+		return
+	}
+	fmt.Printf("  %-6s  %-10s  %s\n", "ID", "STATUS", "COMMAND")
+	fmt.Println("  " + strings.Repeat("─", 56))
+	for _, j := range jobs {
+		status := string(j.StatusSnapshot())
+		cmd := j.Command
+		if len(cmd) > 42 {
+			cmd = cmd[:39] + "..."
+		}
+		fmt.Printf("  %-6s  %-10s  %s\n", j.ID, status, cmd)
+	}
+}
+
+// handleJobInspect prints the full detail for the background job with the given id.
+func (r *REPL) handleJobInspect(id string) {
+	j := tools.Jobs().Get(id)
+	if j == nil {
+		fmt.Printf("%s no job with id %q\n", red("✗"), id)
+		return
+	}
+	status := j.StatusSnapshot()
+	fmt.Printf("id:      %s\n", bold(j.ID))
+	fmt.Printf("command: %s\n", j.Command)
+	fmt.Printf("status:  %s\n", string(status))
+	if status != tools.JobRunning {
+		fmt.Printf("exit:    %d\n", j.ExitCode())
+	}
+	out := j.Output()
+	if out == "" {
+		fmt.Println(dim("(no output yet)"))
+		return
+	}
+	fmt.Println("output:")
+	fmt.Println(tailLines(out, 40))
+}
+
+// tailLines returns the last n lines of s, prefixed with "[...]" when truncated.
+func tailLines(s string, n int) string {
+	s = strings.TrimRight(s, "\n")
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) <= n {
+		return strings.Join(lines, "\n")
+	}
+	return "[...]\n" + strings.Join(lines[len(lines)-n:], "\n")
 }
 
 // handleUndo reverts the last file mutation recorded for this session, gated at
@@ -668,6 +733,7 @@ var commandDetails = map[string]string{
 	"/init":     "scaffold a SPAI.md project-context file in the current working directory.",
 	"/undo":     "revert the last file mutation made by the agent (create/edit/delete round-trip).",
 	"/redo":     "re-apply the last mutation reverted by /undo.",
+	"/jobs":     "list background bash jobs (id, status, command), or `/jobs <id>` to inspect one with full output.",
 	"/quit":     "leave the session (aliases: /exit, /q; Ctrl+D also exits).",
 }
 
@@ -686,6 +752,7 @@ Commands:
   /init              scaffold a SPAI.md project-context file here
   /undo              revert the last file mutation (create/edit/delete)
   /redo              re-apply the last mutation reverted by /undo
+  /jobs [id]         list background bash jobs, or inspect one by id
   /quit, /exit       leave the session
 
 References:

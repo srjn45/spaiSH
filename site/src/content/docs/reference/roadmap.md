@@ -66,8 +66,6 @@ _All Tier 1 items shipped — see Recently completed._
 
 ### Tier 2 — meaningful features
 
-- [ ] Background / long-running `bash` — a `run_in_background` option, a
-      `/jobs` view, and streamed output. Files: `internal/tools/bash.go`.
 - [ ] Named specialized subagents — today `delegate` is a single
       depth-1 generic; add named agent profiles (e.g. `reviewer`,
       `tester`) with their own system prompts and tool allowlists.
@@ -86,6 +84,13 @@ _All Tier 1 items shipped — see Recently completed._
 
 ## Recently completed
 
+- [x] Background / long-running `bash` — a `run_in_background` boolean on the
+      `bash` tool starts commands without blocking the agent turn, captures
+      combined stdout+stderr in an in-memory job registry keyed by integer id,
+      and returns the job id immediately. A new `/jobs` REPL command lists all
+      background jobs (id, status, command) and inspects one by id with full
+      captured output. The same permission-classification gate applies to
+      background commands as to foreground ones.
 - [x] `gh` / PR integration tool — a first-class `gh` tool wrapping the GitHub
       CLI for PR lifecycle (create, view, list, merge, close, comment, checkout)
       and convenience branch/push wrappers, with per-subcommand permission
