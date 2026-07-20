@@ -106,7 +106,10 @@ Run `spai` with no arguments for a multi-turn session. Slash commands:
 | `/clear` | wipe the conversation context |
 | `/compact` | summarise and compact the session |
 | `/history` | print the session history |
+| `/undo`, `/redo` | revert / re-apply the agent's last file mutation (create, edit, or delete) |
 | `/help`, `/quit` | help (`/help <command>` for detail), exit |
+
+Drop a Markdown file in `.spai/commands/` to add your own slash command: `.spai/commands/review.md` becomes `/review`. The file body is a prompt template — `$ARGUMENTS` expands to everything after the command and `$1`, `$2`, … to individual arguments — that runs as a normal agent turn (inheriting `SPAI.md` context and the usual permission gating).
 
 Reference a file with `@path` to include its contents — press `Tab` after `@`
 to complete file and directory names. `Shift-Tab` cycles the execution mode.

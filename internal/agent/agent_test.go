@@ -324,8 +324,8 @@ type errTool struct {
 }
 
 func (t errTool) Name() string           { return t.name }
-func (t errTool) Description() string     { return "err" }
-func (t errTool) Schema() map[string]any  { return map[string]any{"type": "object"} }
+func (t errTool) Description() string    { return "err" }
+func (t errTool) Schema() map[string]any { return map[string]any{"type": "object"} }
 func (t errTool) Run(_ context.Context, _ json.RawMessage) (string, error) {
 	return "", t.err
 }
@@ -421,7 +421,7 @@ func TestAgentToolErrorReportedAndContinues(t *testing.T) {
 type imageTool struct{ img ai.ImageContent }
 
 func (imageTool) Name() string           { return "read_image" }
-func (imageTool) Description() string     { return "fake image" }
+func (imageTool) Description() string    { return "fake image" }
 func (imageTool) Schema() map[string]any { return map[string]any{"type": "object"} }
 func (imageTool) Run(_ context.Context, _ json.RawMessage) (string, error) {
 	return "attached image", nil

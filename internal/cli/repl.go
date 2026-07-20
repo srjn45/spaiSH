@@ -15,6 +15,7 @@ import (
 
 	"spaish/internal/agent"
 	"spaish/internal/app"
+	"spaish/internal/config"
 	"spaish/internal/protocol"
 )
 
@@ -25,11 +26,24 @@ type REPL struct {
 	cwd       string
 	gitBranch string
 	mode      string
+	commands  []config.Command // discovered .spai/commands/*.md custom commands
 }
 
-// NewREPL creates an interactive session driver.
+// NewREPL creates an interactive session driver. Custom slash commands are
+// discovered once from the working directory at construction time.
 func NewREPL(a *app.App, sessionID, cwd, gitBranch string) *REPL {
-	return &REPL{app: a, sessionID: sessionID, cwd: cwd, gitBranch: gitBranch, mode: agent.ModeManual}
+	cmds, _ := config.DiscoverCommands(cwd)
+	return &REPL{app: a, sessionID: sessionID, cwd: cwd, gitBranch: gitBranch, mode: agent.ModeManual, commands: cmds}
+}
+
+// commandNames returns the names of the discovered custom commands, for tab
+// completion.
+func (r *REPL) commandNames() []string {
+	names := make([]string, len(r.commands))
+	for i, c := range r.commands {
+		names[i] = c.Name
+	}
+	return names
 }
 
 func (r *REPL) prompt() string {
@@ -62,7 +76,7 @@ func (r *REPL) Run() error {
 		HistoryFile:            historyFile(),
 		HistorySearchFold:      true,
 		DisableAutoSaveHistory: false,
-		AutoComplete:           newCompleter(r.cwd),
+		AutoComplete:           newCompleter(r.cwd, r.commandNames()...),
 		InterruptPrompt:        "^C",
 		EOFPrompt:              "exit",
 		// Read Shift-Tab from a wrapper that rewrites CSI Z to a sentinel rune,

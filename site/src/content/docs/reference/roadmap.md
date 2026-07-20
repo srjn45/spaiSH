@@ -62,17 +62,6 @@ self-contained; Tier 2 adds meaningful features; Tier 3 is polish.
 
 ### Tier 1 — high leverage, mostly self-contained
 
-- [ ] Checkpoint & `/undo` for file edits — snapshot each file before
-      `write_file`/`edit_file`/`apply_patch`/`multi_edit` mutates it
-      (originals under `.spai/checkpoints/<session>/`), and add `/undo`
-      and `/redo` slash commands. Reuses the existing session plumbing.
-      Files: `internal/tools/files.go`, `internal/session/`,
-      `internal/cli/slash.go`.
-- [ ] Custom slash commands / prompt templates — discover
-      `.spai/commands/*.md` and expand them into prompts with
-      `$ARGUMENTS` / `$1` substitution (e.g. `/review`, `/fix-tests`).
-      Composes with the existing `SPAI.md` discovery. Files:
-      `internal/cli/slash.go`, `internal/config/project.go`.
 - [ ] Optional execution sandbox — `bash` and `code_exec` are
       explicitly not sandboxed. Add an opt-in Linux sandbox (Landlock +
       seccomp, or `bwrap` when present) restricting filesystem and
@@ -106,6 +95,13 @@ self-contained; Tier 2 adds meaningful features; Tier 3 is polish.
 
 ## Recently completed
 
+- [x] Checkpoint & `/undo` for file edits — snapshot each file before
+      `write_file`/`edit_file`/`apply_patch`/`multi_edit` mutates it
+      (originals under `.spai/checkpoints/<session>/`), with `/undo`
+      and `/redo` slash commands; create/edit/delete round-trip
+- [x] Custom slash commands / prompt templates — discover
+      `.spai/commands/*.md` and expand them into prompts with
+      `$ARGUMENTS` / `$1` substitution, composing with `SPAI.md` discovery
 - [x] Provider retry / backoff / rate-limit handling — a shared
       `http.RoundTripper` wrapper retries 429 / transient 5xx with
       exponential backoff and jitter, honouring `Retry-After`

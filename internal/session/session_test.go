@@ -421,7 +421,7 @@ func TestLatestSessionID(t *testing.T) {
 func TestEstimateUsage(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	s, _ := session.LoadByID("usage")
-	s.SetSummary(strings.Repeat("s", 40))                 // 40 chars → prompt
+	s.SetSummary(strings.Repeat("s", 40))                            // 40 chars → prompt
 	s.AddExchange(strings.Repeat("u", 80), strings.Repeat("a", 120)) // 80 prompt, 120 gen
 	s.Messages = append(s.Messages, ai.Message{
 		Role:        "assistant",
