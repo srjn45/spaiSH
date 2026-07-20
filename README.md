@@ -139,6 +139,12 @@ You can layer a **configurable policy** on top of the tier gate in the
 server, plus a bash `allow_commands` prefix allowlist (e.g. `git status`) that
 bypasses confirmation. See the annotated `config/spaid.toml` for the keys.
 
+OpenAI-compatible reasoning models (o1, o3, o4-mini, …) support a
+`reasoning_effort` knob ("low", "medium", "high") that controls thinking
+budget per request. Set it in `[provider]` of `spaid.toml`
+(`reasoning_effort = "medium"`); leave it empty (the default) to omit the
+field, which is safe for all models including non-reasoning ones.
+
 Transient provider failures (HTTP 429 or 5xx) are retried automatically with
 exponential backoff and jitter, honouring a server `Retry-After` header, across
 all providers. Tune it in the optional `[retry]` section of `spaid.toml`

@@ -14,10 +14,11 @@ import (
 // streaming and tool-calling. It serves both hosted OpenAI-style APIs (with an
 // API key) and local keyless servers such as llama.cpp / bitnet.cpp.
 type OpenAIProvider struct {
-	endpoint string // base URL; "/chat/completions" is appended
-	apiKey   string
-	model    string
-	client   *http.Client
+	endpoint        string // base URL; "/chat/completions" is appended
+	apiKey          string
+	model           string
+	client          *http.Client
+	reasoningEffort string // sent as reasoning_effort only when non-empty
 }
 
 // NewOpenAIProvider creates an OpenAI-compatible provider. apiKey may be empty
@@ -31,6 +32,15 @@ func NewOpenAIProvider(endpoint, apiKey, model string, retry RetryConfig) *OpenA
 		model:    model,
 		client:   NewRetryClient(nil, retry),
 	}
+}
+
+// WithReasoningEffort sets the reasoning_effort value sent to reasoning models
+// (e.g. o1, o3, o4-mini). Valid values are "low", "medium", and "high". An
+// empty string (the default) omits the field, which is safe for non-reasoning
+// models. Returns the receiver for chaining.
+func (p *OpenAIProvider) WithReasoningEffort(effort string) *OpenAIProvider {
+	p.reasoningEffort = effort
+	return p
 }
 
 func (p *OpenAIProvider) Name() string { return "openai" }
@@ -118,13 +128,19 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req Request) (<-chan Event,
 		} `json:"function"`
 	}
 	type reqBody struct {
-		Model    string      `json:"model"`
-		Messages []openAIMsg `json:"messages"`
-		Tools    []toolDef   `json:"tools,omitempty"`
-		Stream   bool        `json:"stream"`
+		Model           string      `json:"model"`
+		Messages        []openAIMsg `json:"messages"`
+		Tools           []toolDef   `json:"tools,omitempty"`
+		Stream          bool        `json:"stream"`
+		ReasoningEffort string      `json:"reasoning_effort,omitempty"`
 	}
 
-	body := reqBody{Model: model, Messages: toOpenAIMessages(req.System, req.Messages), Stream: true}
+	body := reqBody{
+		Model:           model,
+		Messages:        toOpenAIMessages(req.System, req.Messages),
+		Stream:          true,
+		ReasoningEffort: p.reasoningEffort,
+	}
 	for _, t := range req.Tools {
 		var td toolDef
 		td.Type = "function"

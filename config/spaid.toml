@@ -10,6 +10,11 @@ endpoint = ""
 api_key_env = "ANTHROPIC_API_KEY"
 # Model name.
 model = "claude-opus-4-8"
+# reasoning_effort controls how much thinking budget OpenAI-compatible reasoning
+# models (o1, o3, o4-mini, …) spend per request. Valid values: "low", "medium",
+# "high". Leave empty (the default) to omit the field — safe for all models
+# including non-reasoning ones. Only takes effect when kind = "openai".
+# reasoning_effort = "medium"
 
 [local]
 # Ollama endpoint (used with prefer_local = true or `spai --local`).
