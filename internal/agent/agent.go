@@ -9,6 +9,7 @@ import (
 	"spaish/internal/ai"
 	"spaish/internal/permissions"
 	"spaish/internal/protocol"
+	"spaish/internal/sandbox"
 	"spaish/internal/session"
 	"spaish/internal/tools"
 )
@@ -34,6 +35,14 @@ type Config struct {
 	// gating layer consulted before the tier-based confirm gate. The zero value
 	// is an empty policy, so leaving it unset preserves the legacy behavior.
 	Policy permissions.Policy
+
+	// Sandbox is the opt-in execution containment applied inside bash/code_exec,
+	// under (never in place of) the permission gate. nil means no sandbox. It is
+	// inherited by delegated sub-agents so defense-in-depth extends to them.
+	Sandbox sandbox.Sandbox
+	// Trusted marks bash commands exempt from the sandbox (the allow_commands
+	// carve-out). nil trusts nothing.
+	Trusted func(cmd string) bool
 }
 
 // ConfirmFunc is called when a tier-gated tool call needs user approval.

@@ -6,12 +6,27 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"spaish/internal/sandbox"
 )
 
 const maxToolOutput = 16 * 1024
 
 // Bash runs a shell command and returns its combined stdout+stderr.
-type Bash struct{}
+//
+// When Sandbox is set and enabled, the child process is wrapped in the execution
+// sandbox unless Trusted reports the command as explicitly blessed (the
+// allow_commands carve-out). Sandbox setup that fails is fatal: the command is
+// refused rather than run unsandboxed. Both fields are nil-safe — a zero-value
+// Bash sandboxes nothing, matching the pre-sandbox behavior.
+type Bash struct {
+	// Sandbox restricts the spawned process. nil (or a disabled sandbox) means
+	// no wrapping.
+	Sandbox sandbox.Sandbox
+	// Trusted reports whether a command is exempt from the sandbox. nil means
+	// nothing is trusted (every command is wrapped when the sandbox is enabled).
+	Trusted func(cmd string) bool
+}
 
 func (Bash) Name() string { return "bash" }
 
@@ -27,7 +42,7 @@ func (Bash) Schema() map[string]any {
 	}, "command")
 }
 
-func (Bash) Run(ctx context.Context, input json.RawMessage) (string, error) {
+func (b Bash) Run(ctx context.Context, input json.RawMessage) (string, error) {
 	var args struct {
 		Command string `json:"command"`
 	}
@@ -42,6 +57,17 @@ func (Bash) Run(ctx context.Context, input json.RawMessage) (string, error) {
 	var out strings.Builder
 	cmd.Stdout = &out
 	cmd.Stderr = &out
+
+	// Containment is applied here, AFTER the permission gate has already allowed
+	// this command to run — it never alters classification or confirmation.
+	// Commands the user has explicitly blessed (Trusted) bypass the sandbox.
+	if b.Sandbox != nil && b.Sandbox.Enabled() &&
+		!(b.Trusted != nil && b.Trusted(args.Command)) {
+		if err := b.Sandbox.Wrap(cmd); err != nil {
+			return "", fmt.Errorf("sandbox setup failed (refusing to run unsandboxed): %w", err)
+		}
+	}
+
 	err := cmd.Run()
 
 	result := tailTrim(out.String(), maxToolOutput)

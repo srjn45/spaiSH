@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 
 	"spaish/internal/ai"
+	"spaish/internal/sandbox"
 )
 
 // Tool is a single capability the model can invoke.
@@ -50,10 +51,22 @@ func NewRegistry(tools ...Tool) *Registry {
 	return r
 }
 
-// DefaultRegistry returns the standard built-in tool set.
+// DefaultRegistry returns the standard built-in tool set with no execution
+// sandbox (bash and code_exec run unwrapped, as before). Callers that want the
+// opt-in sandbox use RegistryWithSandbox instead.
 func DefaultRegistry() *Registry {
+	return RegistryWithSandbox(nil, nil)
+}
+
+// RegistryWithSandbox returns the standard built-in tool set with the execution
+// sandbox injected into the bash and code_exec tools. A nil sandbox (or one that
+// reports Enabled() == false) leaves those tools running unwrapped, so passing
+// (nil, nil) is exactly DefaultRegistry. trusted is the predicate marking bash
+// commands exempt from the sandbox (the allow_commands carve-out); nil trusts
+// nothing.
+func RegistryWithSandbox(sb sandbox.Sandbox, trusted func(cmd string) bool) *Registry {
 	return NewRegistry(
-		&Bash{},
+		&Bash{Sandbox: sb, Trusted: trusted},
 		&ReadFile{},
 		&ReadImage{},
 		&WriteFile{},
@@ -68,7 +81,7 @@ func DefaultRegistry() *Registry {
 		&MultiEdit{},
 		&Git{},
 		&TodoWrite{},
-		&CodeExec{},
+		&CodeExec{Sandbox: sb},
 	)
 }
 

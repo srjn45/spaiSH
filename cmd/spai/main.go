@@ -16,6 +16,7 @@ import (
 	"spaish/internal/cli"
 	"spaish/internal/permissions"
 	"spaish/internal/protocol"
+	"spaish/internal/sandbox"
 	"spaish/internal/session"
 )
 
@@ -349,6 +350,18 @@ func handleSessionsCommand(args []string) {
 }
 
 func main() {
+	// The hidden __sandbox-exec trampoline must run before anything else: it
+	// applies the native sandbox restrictions to this process and execs the real
+	// command. It performs no gating and is reached only when the sandbox's
+	// native backend wraps a command. On success it never returns.
+	if len(os.Args) >= 2 && os.Args[1] == sandbox.TrampolineSubcommand {
+		if err := sandbox.RunTrampoline(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "sandbox: %v\n", err)
+			os.Exit(126)
+		}
+		return
+	}
+
 	// Handle subcommands before flag parsing so flags don't interfere.
 	if len(os.Args) >= 2 {
 		switch os.Args[1] {

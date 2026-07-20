@@ -42,9 +42,12 @@ func childConfig(parent Config) Config {
 // "delegate" tool by NewWithRegistry.
 //
 // Safety-critical invariants enforced here:
-//   - The nested Agent is built with a plain tools.DefaultRegistry(), which does
-//     NOT contain the delegate tool. That is the hard recursion limit: a nested
-//     loop physically cannot delegate again, so depth can never exceed 1.
+//   - The nested Agent is built with a registry that does NOT contain the
+//     delegate tool. That is the hard recursion limit: a nested loop physically
+//     cannot delegate again, so depth can never exceed 1.
+//   - The nested registry inherits the parent's Sandbox (and Trusted predicate),
+//     so a delegated task is contained exactly like a top-level one and cannot
+//     escape the sandbox.
 //   - The parent's real confirmFn is passed through unchanged, so any
 //     Write/Elevated/Destructive tool call the nested loop makes goes through the
 //     exact same tier-based confirmation gate as a top-level call — delegation
@@ -57,7 +60,7 @@ func runDelegate(ctx context.Context, provider ai.Provider, confirmFn ConfirmFun
 		provider:  provider,
 		config:    child,
 		confirmFn: confirmFn,
-		registry:  tools.DefaultRegistry(),
+		registry:  tools.RegistryWithSandbox(child.Sandbox, child.Trusted),
 	}
 
 	// A fresh, in-memory session: the sub-agent does not see the parent

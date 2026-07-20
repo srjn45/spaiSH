@@ -103,16 +103,18 @@ func (p Policy) Decide(toolName, bashCmd string) Decision {
 			return d
 		}
 	}
-	if toolName == "bash" && p.matchesAllowCommand(bashCmd) {
+	if toolName == "bash" && p.MatchesAllowCommand(bashCmd) {
 		return DecisionAllow
 	}
 	return DecisionDefault
 }
 
-// matchesAllowCommand reports whether cmd starts with one of the allowlisted
+// MatchesAllowCommand reports whether cmd starts with one of the allowlisted
 // prefixes on a word boundary (exact match or prefix followed by whitespace),
 // so "git status" does not match "git status-hack" but does match "git status -s".
-func (p Policy) matchesAllowCommand(cmd string) bool {
+// It is exported so the sandbox can reuse the same trust signal for its
+// trust_allowlisted_commands carve-out.
+func (p Policy) MatchesAllowCommand(cmd string) bool {
 	cmd = strings.TrimSpace(cmd)
 	for _, prefix := range p.allowCmds {
 		if cmd == prefix {

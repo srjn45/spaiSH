@@ -16,6 +16,28 @@ type Config struct {
 	Agent       AgentConfig       `toml:"agent"`
 	Spaish      SpaishConfig      `toml:"spaish"`
 	MCP         MCPConfig         `toml:"mcp"`
+	Sandbox     SandboxConfig     `toml:"sandbox"`
+}
+
+// SandboxConfig is the opt-in, default-OFF execution sandbox for the bash and
+// code_exec tools. The zero value is disabled, so an absent [sandbox] section
+// reproduces exactly the pre-sandbox behavior. It is enforced on Linux (via
+// bubblewrap or native Landlock+seccomp) and is a no-op elsewhere. The sandbox
+// is defense-in-depth layered under the permission gate; it never replaces
+// confirmation.
+type SandboxConfig struct {
+	// Enabled is the master opt-in. Default false.
+	Enabled bool `toml:"enabled"`
+	// AllowNetwork keeps network access open when true. Default false (deny).
+	AllowNetwork bool `toml:"allow_network"`
+	// AllowPaths lists extra writable directories; the working directory and the
+	// code_exec throwaway temp dir are always writable in addition to these.
+	AllowPaths []string `toml:"allow_paths"`
+	// Backend selects the mechanism: "auto" (default) | "bwrap" | "landlock" | "off".
+	Backend string `toml:"backend"`
+	// TrustAllowlistedCommands, when true, exempts bash commands matched by
+	// [permissions].allow_commands from the sandbox. Default false (sandbox all).
+	TrustAllowlistedCommands bool `toml:"trust_allowlisted_commands"`
 }
 
 // MCPConfig declares external Model Context Protocol servers to connect to. Each
