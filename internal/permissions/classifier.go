@@ -224,6 +224,8 @@ func classifyProg(prog string, args []string) Tier {
 		return TierWrite
 	case prog == "git":
 		return classifyGit(args)
+	case prog == "gh":
+		return classifyGH(args)
 	case prog == "docker":
 		return classifyDocker(args)
 	case prog == "systemctl":
@@ -297,6 +299,73 @@ func classifyGit(args []string) Tier {
 			return TierElevated
 		}
 		return TierWrite
+	default:
+		return TierWrite
+	}
+}
+
+// classifyGH classifies a gh CLI invocation by inspecting the top-level
+// subcommand and action. Read-only queries (pr view/list/status, run
+// view/list/watch, repo view, issue view/list/status) are TierRead;
+// local-only mutations (pr checkout) are TierWrite; outward-facing operations
+// (pr create/merge/close/comment, run rerun, repo create/fork, etc.) are
+// TierElevated. Unknown combinations default to TierWrite.
+func classifyGH(args []string) Tier {
+	sub := firstNonFlag(args)
+	if sub == "" {
+		return TierWrite
+	}
+	rest := args
+	for i, a := range args {
+		if a == sub {
+			rest = args[i+1:]
+			break
+		}
+	}
+	action := firstNonFlag(rest)
+
+	switch sub {
+	case "pr":
+		switch action {
+		case "view", "list", "status", "checks", "diff":
+			return TierRead
+		case "checkout":
+			return TierWrite
+		default:
+			// create, merge, close, comment, review, edit, ready, reopen, lock, ...
+			return TierElevated
+		}
+	case "run":
+		switch action {
+		case "view", "list", "watch", "download":
+			return TierRead
+		default:
+			// rerun, cancel, delete, ...
+			return TierElevated
+		}
+	case "repo":
+		switch action {
+		case "view", "list", "clone":
+			return TierRead
+		default:
+			// create, fork, delete, rename, edit, archive, ...
+			return TierElevated
+		}
+	case "issue":
+		switch action {
+		case "view", "list", "status":
+			return TierRead
+		default:
+			// create, edit, close, reopen, comment, lock, ...
+			return TierElevated
+		}
+	case "release":
+		switch action {
+		case "view", "list", "download":
+			return TierRead
+		default:
+			return TierElevated
+		}
 	default:
 		return TierWrite
 	}

@@ -335,6 +335,10 @@ func classify(tc ai.ToolCall) (permissions.Tier, string) {
 		sub, args := tools.GitCall(tc.Input)
 		display := strings.TrimSpace("git " + sub + " " + strings.Join(args, " "))
 		return tools.GitTier(sub, args), display
+	case "gh":
+		sub, args := tools.GHCall(tc.Input)
+		display := strings.TrimSpace("gh " + sub + " " + strings.Join(args, " "))
+		return tools.GHTier(sub), display
 	case "todo_write":
 		return permissions.TierRead, "updating task list"
 	case "code_exec":

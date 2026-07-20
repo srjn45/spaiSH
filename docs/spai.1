@@ -464,6 +464,57 @@ spai clear                # wipe context
 spai compact              # summarise and compact
 .EE
 .RE
+.SH TOOLS
+The agent exposes a structured tool surface to the model.
+Every tool call is classified for risk and shown before execution.
+Key tools:
+.TP
+.B bash
+Run shell commands.
+Classified by parsing the shell AST; safe reads run silently, destructive
+commands (e.g.\&
+.BR "rm -rf" )
+require
+.B YES
+confirmation.
+.TP
+.B git
+Structured git operations: status, diff, log, blame, show, branch, add,
+commit, checkout, reset, push.
+Each subcommand is tiered independently.
+.TP
+.B gh
+GitHub CLI operations for PR workflows: read-only queries
+.RB ( pr-view ,
+.BR pr-list ,
+.BR pr-status )
+run silently; local mutations
+.RB ( pr-checkout ,
+.BR create-branch )
+require Write confirmation; outward-facing operations
+.RB ( push ,
+.BR pr-create ,
+.BR pr-comment ,
+.BR pr-merge ,
+.BR pr-close )
+require Elevated approval. Requires the
+.BR gh (1)
+CLI to be installed and authenticated.
+.TP
+.B read_file , write_file , edit_file , multi_edit , apply_patch
+File I/O.
+.TP
+.B glob , grep , list_dir
+File search.
+.TP
+.B web_fetch , web_search , http_request
+Network access.
+.TP
+.B code_exec
+Ephemeral execution of Python, Node, Ruby, or Go snippets.
+.TP
+.B delegate
+Spawn a nested sub-agent (depth limited to 1).
 .SH SEE ALSO
 .BR less (1),
 .BR ollama (1)

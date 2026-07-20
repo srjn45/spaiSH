@@ -73,8 +73,6 @@ _All Tier 1 items shipped — see Recently completed._
 
 ### Tier 2 — meaningful features
 
-- [ ] `gh` / PR integration tool — open branches, commit, and create
-      PRs as an extension of the structured `git` tool.
 - [ ] Named specialized subagents — today `delegate` is a single
       depth-1 generic; add named agent profiles (e.g. `reviewer`,
       `tester`) with their own system prompts and tool allowlists.
@@ -100,6 +98,14 @@ _All Tier 1 items shipped — see Recently completed._
       background jobs (id, status, command) and inspects one by id with full
       captured output. The same permission-classification gate applies to
       background commands as to foreground ones.
+- [x] `gh` / PR integration tool — a first-class `gh` tool wrapping the GitHub
+      CLI for PR lifecycle (create, view, list, merge, close, comment, checkout)
+      and convenience branch/push wrappers, with per-subcommand permission
+      tiering: read-only queries (`pr-view`, `pr-list`, `pr-status`) at
+      TierRead; local mutations (`pr-checkout`, `create-branch`) at TierWrite;
+      outward-facing operations (`push`, `pr-create`, `pr-comment`, `pr-merge`,
+      `pr-close`) at TierElevated. Bash classifier extended with a `classifyGH`
+      branch covering `gh pr`, `gh run`, `gh repo`, `gh issue`, and `gh release`.
 - [x] OpenAI `reasoning_effort` passthrough — a new `reasoning_effort` config
       key in `[provider]` (spaid.toml) passes the effort level ("low",
       "medium", "high") to OpenAI-compatible reasoning models (o1, o3,

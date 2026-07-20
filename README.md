@@ -128,8 +128,30 @@ to complete file and directory names. `Shift-Tab` cycles the execution mode.
 
 `spai` runs a native tool-calling loop: the model streams text and tool calls,
 each tool call is classified for risk and gated, executed, and the result fed
-back until the task is done. Tools: `bash`, `read_file`, `write_file`,
-`edit_file`, `glob`, `grep`, `list_dir`.
+back until the task is done.
+
+### Tools
+
+| Tool | What it does | Tier |
+|---|---|---|
+| `bash` | Run shell commands | Read → Destructive |
+| `read_file` | Read a file | Read |
+| `write_file` | Write a file | Write |
+| `edit_file` | Edit a file (find & replace) | Write |
+| `multi_edit` | Regex find & replace across a glob | Write |
+| `apply_patch` | Apply a structured patch | Write |
+| `glob` | Find files by pattern | Read |
+| `grep` | Search file contents by regex | Read |
+| `list_dir` | List directory contents | Read |
+| `web_fetch` | Fetch a URL and return its text | Read |
+| `web_search` | Keyless DuckDuckGo search | Read |
+| `http_request` | Generic REST call (method/headers/body) | Write |
+| `git` | Structured git operations with per-subcommand tiering | Read → Destructive |
+| `gh` | GitHub CLI — PR lifecycle (create/view/list/merge/close), branch, push | Read → Elevated |
+| `code_exec` | Ephemeral Python/Node/Ruby/Go execution | Write |
+| `read_image` | Read an image file for vision models | Read |
+| `todo_write` | Manage an in-session task list | Write |
+| `delegate` | Spawn a nested subagent (depth-limited to 1) | Write |
 
 Command safety is decided by **parsing** each shell command (not substring
 matching), so `rm -rf`, `rm --recursive`, and `a && rm -rf b` are all caught,
