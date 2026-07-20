@@ -139,6 +139,11 @@ You can layer a **configurable policy** on top of the tier gate in the
 server, plus a bash `allow_commands` prefix allowlist (e.g. `git status`) that
 bypasses confirmation. See the annotated `config/spaid.toml` for the keys.
 
+Transient provider failures (HTTP 429 or 5xx) are retried automatically with
+exponential backoff and jitter, honouring a server `Retry-After` header, across
+all providers. Tune it in the optional `[retry]` section of `spaid.toml`
+(`max_attempts`, `base_delay_ms`, `max_delay_ms`).
+
 Sessions are file-backed and auto-compact when they grow large.
 
 ---

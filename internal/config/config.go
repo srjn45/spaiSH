@@ -16,6 +16,18 @@ type Config struct {
 	Agent       AgentConfig       `toml:"agent"`
 	Spaish      SpaishConfig      `toml:"spaish"`
 	MCP         MCPConfig         `toml:"mcp"`
+	Retry       RetryConfig       `toml:"retry"`
+}
+
+// RetryConfig mirrors ai.RetryConfig on the wire, expressing durations as
+// integer milliseconds for TOML friendliness. It is a top-level section because
+// the policy spans the Anthropic/OpenAI providers under [provider] and Ollama
+// under [local]. Zero/absent values resolve to the ai package defaults, so the
+// section is optional.
+type RetryConfig struct {
+	MaxAttempts int `toml:"max_attempts"`  // default 4
+	BaseDelayMS int `toml:"base_delay_ms"` // default 500
+	MaxDelayMS  int `toml:"max_delay_ms"`  // default 30000
 }
 
 // MCPConfig declares external Model Context Protocol servers to connect to. Each

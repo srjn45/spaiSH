@@ -36,7 +36,7 @@ func TestOpenAIStreamText(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewOpenAIProvider(srv.URL, "k", "m")
+	p := ai.NewOpenAIProvider(srv.URL, "k", "m", ai.RetryConfig{})
 	ch, err := p.Stream(context.Background(), ai.Request{Messages: []ai.Message{{Role: "user", Content: "hi"}}})
 	if err != nil {
 		t.Fatalf("Stream: %v", err)
@@ -61,7 +61,7 @@ func TestOpenAIStreamToolCall(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewOpenAIProvider(srv.URL, "k", "m")
+	p := ai.NewOpenAIProvider(srv.URL, "k", "m", ai.RetryConfig{})
 	ch, err := p.Stream(context.Background(), ai.Request{
 		Messages: []ai.Message{{Role: "user", Content: "list files"}},
 		Tools:    []ai.ToolSpec{{Name: "bash", Description: "run a command", Schema: map[string]any{"type": "object"}}},
@@ -106,7 +106,7 @@ func TestOllamaStreamToolCall(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder")
+	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder", ai.RetryConfig{})
 	if !p.Available() {
 		t.Fatal("Available() = false, want true")
 	}
@@ -165,7 +165,7 @@ func TestOllamaInlineToolCallFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder")
+	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder", ai.RetryConfig{})
 	ch, err := p.Stream(context.Background(), ai.Request{
 		Messages: []ai.Message{{Role: "user", Content: "write then read"}},
 		Tools: []ai.ToolSpec{
@@ -208,7 +208,7 @@ func TestOpenAIMalformedSSE(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewOpenAIProvider(srv.URL, "k", "m")
+	p := ai.NewOpenAIProvider(srv.URL, "k", "m", ai.RetryConfig{})
 	ch, err := p.Stream(context.Background(), ai.Request{Messages: []ai.Message{{Role: "user", Content: "hi"}}})
 	if err != nil {
 		t.Fatalf("Stream: %v", err)
@@ -237,7 +237,7 @@ func TestOpenAIEmptyToolArgs(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		p := ai.NewOpenAIProvider(srv.URL, "k", "m")
+		p := ai.NewOpenAIProvider(srv.URL, "k", "m", ai.RetryConfig{})
 		ch, err := p.Stream(context.Background(), ai.Request{
 			Messages: []ai.Message{{Role: "user", Content: "go"}},
 			Tools:    []ai.ToolSpec{{Name: "bash", Schema: map[string]any{"type": "object"}}},
@@ -270,7 +270,7 @@ func TestOpenAIEmptyToolArgs(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		p := ai.NewOpenAIProvider(srv.URL, "k", "m")
+		p := ai.NewOpenAIProvider(srv.URL, "k", "m", ai.RetryConfig{})
 		ch, err := p.Stream(context.Background(), ai.Request{
 			Messages: []ai.Message{{Role: "user", Content: "go"}},
 			Tools:    []ai.ToolSpec{{Name: "bash", Schema: map[string]any{"type": "object"}}},
@@ -304,7 +304,8 @@ func TestOpenAINon200(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewOpenAIProvider(srv.URL, "k", "m")
+	// MaxAttempts: 1 keeps this focused on error surfacing, not retry timing.
+	p := ai.NewOpenAIProvider(srv.URL, "k", "m", ai.RetryConfig{MaxAttempts: 1})
 	_, err := p.Stream(context.Background(), ai.Request{Messages: []ai.Message{{Role: "user", Content: "hi"}}})
 	if err == nil {
 		t.Fatal("expected an error for non-200 status")
@@ -336,7 +337,7 @@ func TestOpenAICompleteDelegation(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewOpenAIProvider(srv.URL, "k", "m")
+	p := ai.NewOpenAIProvider(srv.URL, "k", "m", ai.RetryConfig{})
 	ch, err := p.Complete(context.Background(), []ai.Message{
 		{Role: "system", Content: "be terse"},
 		{Role: "user", Content: "hi"},
@@ -372,7 +373,7 @@ func TestOllamaMalformedLine(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder")
+	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder", ai.RetryConfig{})
 	ch, err := p.Stream(context.Background(), ai.Request{Messages: []ai.Message{{Role: "user", Content: "hi"}}})
 	if err != nil {
 		t.Fatalf("Stream: %v", err)
@@ -400,7 +401,8 @@ func TestOllamaNon200(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder")
+	// MaxAttempts: 1 keeps this focused on error surfacing, not retry timing.
+	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder", ai.RetryConfig{MaxAttempts: 1})
 	_, err := p.Stream(context.Background(), ai.Request{Messages: []ai.Message{{Role: "user", Content: "hi"}}})
 	if err == nil {
 		t.Fatal("expected an error for non-200 status")
@@ -425,7 +427,7 @@ func TestOllamaEmptyToolArgs(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder")
+	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder", ai.RetryConfig{})
 	ch, err := p.Stream(context.Background(), ai.Request{
 		Messages: []ai.Message{{Role: "user", Content: "time?"}},
 		Tools:    []ai.ToolSpec{{Name: "now", Schema: map[string]any{"type": "object"}}},
@@ -463,7 +465,7 @@ func TestOllamaCompleteDelegation(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder")
+	p := ai.NewLocalProvider(srv.URL, "qwen2.5-coder", ai.RetryConfig{})
 	ch, err := p.Complete(context.Background(), []ai.Message{
 		{Role: "system", Content: "be terse"},
 		{Role: "user", Content: "hi"},
@@ -481,14 +483,14 @@ func TestOllamaCompleteDelegation(t *testing.T) {
 }
 
 func TestAnthropicAvailableAndName(t *testing.T) {
-	p := ai.NewAnthropicProvider("sk-test", "")
+	p := ai.NewAnthropicProvider("sk-test", "", ai.RetryConfig{})
 	if !p.Available() {
 		t.Error("expected Available() = true with an API key")
 	}
 	if p.Name() != "anthropic" {
 		t.Errorf("Name() = %q, want anthropic", p.Name())
 	}
-	if ai.NewAnthropicProvider("", "").Available() {
+	if ai.NewAnthropicProvider("", "", ai.RetryConfig{}).Available() {
 		t.Error("expected Available() = false without an API key")
 	}
 }
@@ -543,7 +545,7 @@ func TestAnthropicCacheControlBreakpoints(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewAnthropicProviderWithBase("sk-test", "claude-opus-4-8", srv.URL)
+	p := ai.NewAnthropicProviderWithBase("sk-test", "claude-opus-4-8", srv.URL, ai.RetryConfig{})
 	ch, err := p.Stream(context.Background(), ai.Request{
 		System: "You are a helpful assistant.",
 		Messages: []ai.Message{
@@ -614,7 +616,7 @@ func TestAnthropicCompleteDelegation(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewAnthropicProviderWithBase("sk-test", "claude-opus-4-8", srv.URL)
+	p := ai.NewAnthropicProviderWithBase("sk-test", "claude-opus-4-8", srv.URL, ai.RetryConfig{})
 	ch, err := p.Complete(context.Background(), []ai.Message{
 		{Role: "system", Content: "be terse"},
 		{Role: "user", Content: "hi"},
@@ -645,7 +647,7 @@ func TestAnthropicStreamError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewAnthropicProviderWithBase("sk-test", "claude-opus-4-8", srv.URL)
+	p := ai.NewAnthropicProviderWithBase("sk-test", "claude-opus-4-8", srv.URL, ai.RetryConfig{})
 	ch, err := p.Stream(context.Background(), ai.Request{
 		Messages: []ai.Message{{Role: "user", Content: "hi"}},
 	})
@@ -675,7 +677,7 @@ func TestAnthropicUsageExtraction(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := ai.NewAnthropicProviderWithBase("sk-test", "claude-opus-4-8", srv.URL)
+	p := ai.NewAnthropicProviderWithBase("sk-test", "claude-opus-4-8", srv.URL, ai.RetryConfig{})
 	ch, err := p.Stream(context.Background(), ai.Request{
 		Messages: []ai.Message{{Role: "user", Content: "hi"}},
 	})

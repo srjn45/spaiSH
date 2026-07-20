@@ -38,13 +38,13 @@ func handleInitCommand(_ []string) {
 		cfg.Provider.Endpoint = ask(in, "Endpoint (include /v1)", "https://api.openai.com/v1")
 		cfg.Provider.APIKeyEnv = ask(in, "API key environment variable", "OPENAI_API_KEY")
 		cfg.Provider.Model = ask(in, "Model", "gpt-4o")
-		testErr = testCloud(ai.NewOpenAIProvider(cfg.Provider.Endpoint, os.Getenv(cfg.Provider.APIKeyEnv), cfg.Provider.Model), cfg.Provider.APIKeyEnv)
+		testErr = testCloud(ai.NewOpenAIProvider(cfg.Provider.Endpoint, os.Getenv(cfg.Provider.APIKeyEnv), cfg.Provider.Model, ai.RetryConfig{}), cfg.Provider.APIKeyEnv)
 
 	case "3":
 		cfg.Routing.PreferLocal = true
 		cfg.Local.OllamaEndpoint = ask(in, "Ollama endpoint", "http://localhost:11434")
 		cfg.Local.LocalModel = ask(in, "Model", "qwen2.5-coder:7b")
-		p := ai.NewLocalProvider(cfg.Local.OllamaEndpoint, cfg.Local.LocalModel)
+		p := ai.NewLocalProvider(cfg.Local.OllamaEndpoint, cfg.Local.LocalModel, ai.RetryConfig{})
 		if !p.Available() {
 			testErr = fmt.Errorf("Ollama not reachable at %s — start it with `ollama serve` and pull the model with `spai llm pull %s`", cfg.Local.OllamaEndpoint, cfg.Local.LocalModel)
 		} else {
@@ -59,7 +59,7 @@ func handleInitCommand(_ []string) {
 		if key == "" {
 			testErr = fmt.Errorf("%s is not set in your environment — export it, e.g.\n    export %s=sk-ant-...", cfg.Provider.APIKeyEnv, cfg.Provider.APIKeyEnv)
 		} else {
-			testErr = testCloud(ai.NewAnthropicProvider(key, cfg.Provider.Model), cfg.Provider.APIKeyEnv)
+			testErr = testCloud(ai.NewAnthropicProvider(key, cfg.Provider.Model, ai.RetryConfig{}), cfg.Provider.APIKeyEnv)
 		}
 	}
 

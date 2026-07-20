@@ -69,11 +69,6 @@ self-contained; Tier 2 adds meaningful features; Tier 3 is polish.
 
 ### Tier 1 — high leverage, mostly self-contained
 
-- [ ] Provider retry / backoff / rate-limit handling — no retry logic
-      exists today, so a 429 or transient 5xx fails the turn. Add
-      exponential backoff honouring `Retry-After` across all three
-      providers. Files: `internal/ai/{anthropic,openai,ollama}.go` (or
-      a shared wrapper).
 - [ ] Optional execution sandbox — `bash` and `code_exec` are
       explicitly not sandboxed. Add an opt-in Linux sandbox (Landlock +
       seccomp, or `bwrap` when present) restricting filesystem and
@@ -114,6 +109,12 @@ self-contained; Tier 2 adds meaningful features; Tier 3 is polish.
 - [x] Custom slash commands / prompt templates — discover
       `.spai/commands/*.md` and expand them into prompts with
       `$ARGUMENTS` / `$1` substitution, composing with `SPAI.md` discovery
+- [x] Provider retry / backoff / rate-limit handling — a shared
+      `http.RoundTripper` wrapper retries 429 / transient 5xx with
+      exponential backoff and jitter, honouring `Retry-After`
+      (delta-seconds and HTTP-date), bounded attempts, and
+      context-cancellation, across all three providers. Tunable via the
+      optional `[retry]` config section.
 - [x] First tagged release (`v0.1.0`) — cut a tag and publish prebuilt binaries
 - [x] Per-tool / per-MCP-server permission policy and allowlists
 - [x] Streaming MCP tool discovery + `/mcp` status slash command
