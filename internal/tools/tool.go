@@ -106,6 +106,27 @@ func (r *Registry) Specs() []ai.ToolSpec {
 	return specs
 }
 
+// Filter returns a new registry containing only the tools whose names appear in
+// allow. The returned registry is a strict subset of r — it can never include
+// tools not already present in r, so a profile allowlist cannot grant new
+// capabilities. An empty allow list returns an unchanged copy of r.
+func (r *Registry) Filter(allow []string) *Registry {
+	if len(allow) == 0 {
+		return r
+	}
+	permitted := make(map[string]bool, len(allow))
+	for _, n := range allow {
+		permitted[n] = true
+	}
+	kept := make([]Tool, 0, len(allow))
+	for _, name := range r.order {
+		if permitted[name] {
+			kept = append(kept, r.tools[name])
+		}
+	}
+	return NewRegistry(kept...)
+}
+
 // Add appends tools to the registry, preserving order and keeping the dedupe
 // behavior of NewRegistry: a tool whose name is already registered is skipped.
 // Used to extend the built-in set with dynamically discovered tools (e.g. MCP).

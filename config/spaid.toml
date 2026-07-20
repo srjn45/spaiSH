@@ -101,6 +101,33 @@ backend = "auto"
 # from the sandbox. Default false (sandbox everything).
 trust_allowlisted_commands = false
 
+# Named subagent profiles configure the built-in `delegate` tool. When the
+# model calls delegate with a `profile` argument (e.g. profile = "reviewer"),
+# the spawned sub-agent runs with the listed system prompt and is restricted to
+# the specified tool allowlist. A profile's tools must be a subset of the
+# built-in tool set; listing a tool not present in the parent registry is a
+# no-op. An empty tools list means "inherit all parent tools".
+#
+# Three profiles are available with zero config:
+#   reviewer — read-only analysis (read_file, grep, glob, list_dir, web_*)
+#   tester   — test writing/running (bash, read/write/edit_file, glob, grep)
+#   general  — generic, full tool set, default system prompt
+#
+# Add [[subagent.profiles]] blocks to override a builtin or add new profiles.
+# User-defined profiles take precedence when a name collides with a builtin.
+#
+# [[subagent.profiles]]
+# name         = "reviewer"
+# description  = "Read-only code reviewer."
+# system_prompt = "You are a precise code reviewer. Analyse the code for correctness, clarity, and security. Do not modify any files."
+# tools        = ["read_file", "grep", "glob", "list_dir", "web_search", "web_fetch"]
+#
+# [[subagent.profiles]]
+# name         = "deployer"
+# description  = "CI/CD and deployment expert."
+# system_prompt = "You are a deployment expert. Run CI commands and inspect logs."
+# tools        = ["bash", "read_file", "glob", "grep", "list_dir", "git"]
+
 # External MCP (Model Context Protocol) servers. Each server is spawned over
 # stdio and its tools are exposed to the model as mcp__<name>__<tool>. They are
 # treated as Write-tier and confirmed in manual mode. A server that fails to

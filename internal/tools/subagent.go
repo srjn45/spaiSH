@@ -18,7 +18,10 @@ import (
 //   - it must run with a strictly smaller iteration budget than the parent, and
 //   - it must reuse the parent's real confirmFn so any Write/Elevated/Destructive
 //     sub-action is gated identically to a top-level call.
-type DelegateRunner func(ctx context.Context, task string) (string, error)
+//
+// profile names the agent profile to use (e.g. "reviewer", "tester"). An empty
+// string means "generic": inherit all parent tools and the default system prompt.
+type DelegateRunner func(ctx context.Context, task, profile string) (string, error)
 
 // Delegate ("delegate" tool) spawns a scoped, nested instance of the agent loop
 // to handle a bounded sub-task and returns only its final summary to the parent
@@ -37,13 +40,14 @@ func NewDelegate(run DelegateRunner) *Delegate { return &Delegate{run: run} }
 func (d *Delegate) Name() string { return "delegate" }
 
 func (d *Delegate) Description() string {
-	return "Delegate a bounded sub-task to a scoped nested agent. Provide a self-contained task description; the sub-agent runs its own tool-calling loop (with a smaller iteration budget) and returns only a final summary. Use this to isolate a well-defined chunk of work — the sub-agent cannot itself delegate, and any changes it makes still require the same confirmations as your own tool calls. Do not use it for trivial single steps you can do directly."
+	return "Delegate a bounded sub-task to a scoped nested agent. Provide a self-contained task description; the sub-agent runs its own tool-calling loop (with a smaller iteration budget) and returns only a final summary. Optionally specify a named profile (e.g. \"reviewer\", \"tester\") to run the sub-agent with a focused system prompt and a restricted tool set appropriate for that kind of work. Use this to isolate a well-defined chunk of work — the sub-agent cannot itself delegate, and any changes it makes still require the same confirmations as your own tool calls. Do not use it for trivial single steps you can do directly."
 }
 
 func (d *Delegate) Schema() map[string]any {
 	return objectSchema(
 		map[string]any{
-			"task": strProp("A self-contained description of the sub-task for the nested agent to accomplish. Include all context it needs; it does not see this conversation's history."),
+			"task":    strProp("A self-contained description of the sub-task for the nested agent to accomplish. Include all context it needs; it does not see this conversation's history."),
+			"profile": strProp("Optional name of the agent profile to use (e.g. \"reviewer\", \"tester\", \"general\"). Each profile carries its own system prompt and tool allowlist that restrict the sub-agent to an appropriate capability set. Omit (or pass \"general\") to use the generic profile with the full parent tool set."),
 		},
 		"task",
 	)
@@ -59,9 +63,20 @@ func TaskArg(input json.RawMessage) string {
 	return args.Task
 }
 
+// ProfileArg extracts the "profile" field from a delegate tool call input.
+// Returns "" when absent (meaning: use the generic profile).
+func ProfileArg(input json.RawMessage) string {
+	var args struct {
+		Profile string `json:"profile"`
+	}
+	_ = json.Unmarshal(input, &args)
+	return args.Profile
+}
+
 func (d *Delegate) Run(ctx context.Context, input json.RawMessage) (string, error) {
 	var args struct {
-		Task string `json:"task"`
+		Task    string `json:"task"`
+		Profile string `json:"profile"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "", errors.New("delegate: invalid input: " + err.Error())
@@ -76,5 +91,5 @@ func (d *Delegate) Run(ctx context.Context, input json.RawMessage) (string, erro
 		// it to the nested agent's registry), so treat it as a hard guardrail.
 		return "", errors.New("delegate: not available in this context")
 	}
-	return d.run(ctx, task)
+	return d.run(ctx, task, strings.TrimSpace(args.Profile))
 }

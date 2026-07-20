@@ -66,10 +66,7 @@ _All Tier 1 items shipped — see Recently completed._
 
 ### Tier 2 — meaningful features
 
-- [ ] Named specialized subagents — today `delegate` is a single
-      depth-1 generic; add named agent profiles (e.g. `reviewer`,
-      `tester`) with their own system prompts and tool allowlists.
-      Files: `internal/agent/subagent.go`.
+_All Tier 2 items shipped — see Recently completed._
 
 ### Tier 3 — polish
 
@@ -84,6 +81,14 @@ _All Tier 1 items shipped — see Recently completed._
 
 ## Recently completed
 
+- [x] Named specialized subagents — the `delegate` tool now accepts an optional
+      `profile` argument (`reviewer`, `tester`, `general`) that runs the
+      sub-agent with a focused system prompt and a restricted tool allowlist.
+      Built-in defaults work with zero config; `[[subagent.profiles]]` in
+      `spaid.toml` adds or overrides profiles. Profile tool allowlists are a
+      strict subset of the parent's tools — a sub-agent can never be granted
+      capabilities the parent lacks, and all sub-agent actions still go through
+      the same `confirmFn` tier gate.
 - [x] Background / long-running `bash` — a `run_in_background` boolean on the
       `bash` tool starts commands without blocking the agent turn, captures
       combined stdout+stderr in an in-memory job registry keyed by integer id,

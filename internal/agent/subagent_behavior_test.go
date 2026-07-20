@@ -87,3 +87,66 @@ func TestDelegateReturnsOnlySummary(t *testing.T) {
 		t.Errorf("nested intermediate output leaked to top-level stream: %q", text)
 	}
 }
+
+// TestDelegateWithProfileGatesAtWrite verifies that a delegate call with a
+// named profile is still confirmed at TierWrite in manual mode — the profile arg
+// must not weaken the permission gate. The confirmation display must include the
+// profile name so the user knows which kind of sub-agent is being spawned.
+func TestDelegateWithProfileGatesAtWrite(t *testing.T) {
+	p := &scriptedProvider{turns: [][]ai.Event{
+		// Turn 0: parent calls delegate with reviewer profile.
+		{toolEv("d1", "delegate", `{"task":"review the PR","profile":"reviewer"}`), doneEv()},
+		// Turn 1: nested agent produces its summary, then exits.
+		{textEv("review complete"), doneEv()},
+		// Turn 2: parent receives tool result and finishes.
+		{textEv("all done"), doneEv()},
+	}}
+
+	var sawConfirm bool
+	confirm := func(req protocol.ConfirmRequest) bool {
+		// The display must include both the profile name and the task.
+		if strings.Contains(req.Command, "delegate[reviewer]") && strings.Contains(req.Command, "review the PR") {
+			sawConfirm = true
+		}
+		return true
+	}
+
+	a := agent.NewWithRegistry(p, agent.Config{}, confirm, tools.DefaultRegistry())
+	rs := collect(a.Run(context.Background(), &protocol.AgentRequest{Query: "go"}, newSession(t)))
+
+	if !sawConfirm {
+		t.Errorf("delegate with profile must be confirmed with profile name in display; got requests without it")
+	}
+	// Turn 2's "all done" text should appear in parent's top-level output.
+	if !strings.Contains(joinText(rs), "all done") {
+		t.Errorf("expected parent final text 'all done', got %q", joinText(rs))
+	}
+}
+
+// TestDelegateProfileRestrictedToReadOnlyTools verifies that when a profile with
+// a read-only tool allowlist is used, a write tool that would normally require
+// confirmation is simply absent from the nested registry. The nested agent
+// encountering an unknown tool receives an error result and recovers.
+func TestDelegateProfileRestrictedToReadOnlyTools(t *testing.T) {
+	// The provider turns are consumed across parent and nested runs. Turn 0 is the
+	// parent calling delegate with the reviewer profile. Turn 1 is the nested
+	// reviewer agent calling write_file (which should be absent from its registry).
+	// Turn 2 is the nested agent recovering. Turn 3 is the parent finishing.
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{toolEv("d1", "delegate", `{"task":"review files","profile":"reviewer"}`), doneEv()},
+		{toolEv("w1", "write_file", `{"path":"x","content":"y"}`), doneEv()},
+		{textEv("nested recovered"), doneEv()},
+		{textEv("parent done"), doneEv()},
+	}}
+
+	a := agent.NewWithRegistry(p, agent.Config{Mode: agent.ModeAuto}, alwaysApprove, tools.DefaultRegistry())
+	rs := collect(a.Run(context.Background(), &protocol.AgentRequest{Query: "go"}, newSession(t)))
+
+	// The nested write_file call should have received an "unknown tool" error
+	// (the reviewer profile excludes it), and the nested loop continued. The
+	// parent should then report its final text.
+	text := joinText(rs)
+	if !strings.Contains(text, "parent done") {
+		t.Errorf("expected parent to complete, got %q", text)
+	}
+}

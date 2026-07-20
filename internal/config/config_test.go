@@ -179,6 +179,66 @@ trust_allowlisted_commands = true
 	}
 }
 
+// TestLoadSubagentSection verifies [[subagent.profiles]] entries parse into
+// SubagentConfig.Profiles with all fields populated.
+func TestLoadSubagentSection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spaid.toml")
+	os.WriteFile(path, []byte(`
+[[subagent.profiles]]
+name         = "reviewer"
+description  = "Read-only code reviewer."
+system_prompt = "You are a reviewer."
+tools        = ["read_file", "grep"]
+
+[[subagent.profiles]]
+name         = "deployer"
+description  = "Deployment expert."
+system_prompt = "You are a deployer."
+tools        = ["bash", "git"]
+`), 0644)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Subagent.Profiles) != 2 {
+		t.Fatalf("Subagent.Profiles len = %d, want 2", len(cfg.Subagent.Profiles))
+	}
+
+	r := cfg.Subagent.Profiles[0]
+	if r.Name != "reviewer" {
+		t.Errorf("Profiles[0].Name = %q, want reviewer", r.Name)
+	}
+	if r.SystemPrompt != "You are a reviewer." {
+		t.Errorf("Profiles[0].SystemPrompt = %q", r.SystemPrompt)
+	}
+	if len(r.Tools) != 2 || r.Tools[0] != "read_file" || r.Tools[1] != "grep" {
+		t.Errorf("Profiles[0].Tools = %v", r.Tools)
+	}
+
+	d := cfg.Subagent.Profiles[1]
+	if d.Name != "deployer" {
+		t.Errorf("Profiles[1].Name = %q, want deployer", d.Name)
+	}
+}
+
+// TestSubagentDefaultsEmpty verifies an absent [subagent] section yields a zero
+// value — no profiles — which is valid and falls back to built-in defaults.
+func TestSubagentDefaultsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spaid.toml")
+	os.WriteFile(path, []byte("[provider]\nmodel = \"x\"\n"), 0644)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Subagent.Profiles) != 0 {
+		t.Errorf("absent [subagent] should yield 0 profiles, got %d", len(cfg.Subagent.Profiles))
+	}
+}
+
 // TestSandboxDefaultsDisabled verifies an absent [sandbox] section yields the
 // disabled zero value.
 func TestSandboxDefaultsDisabled(t *testing.T) {

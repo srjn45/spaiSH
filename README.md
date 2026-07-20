@@ -151,7 +151,7 @@ back until the task is done.
 | `code_exec` | Ephemeral Python/Node/Ruby/Go execution | Write |
 | `read_image` | Read an image file for vision models | Read |
 | `todo_write` | Manage an in-session task list | Write |
-| `delegate` | Spawn a nested subagent (depth-limited to 1) | Write |
+| `delegate` | Spawn a named nested subagent (depth-limited to 1) | Write |
 
 Command safety is decided by **parsing** each shell command (not substring
 matching), so `rm -rf`, `rm --recursive`, and `a && rm -rf b` are all caught,
@@ -197,6 +197,27 @@ trust_allowlisted_commands = false # exempt [permissions].allow_commands from th
 
 When enabled but the platform cannot enforce it, the command fails closed rather
 than running unsandboxed.
+
+The `delegate` tool spawns a nested subagent (depth-limited to 1). Pass an
+optional `profile` argument to select a named profile with a focused system
+prompt and restricted tool set:
+
+| Profile | System prompt | Tools |
+|---------|--------------|-------|
+| `reviewer` | Read-only code analyser | `read_file`, `grep`, `glob`, `list_dir`, `web_search`, `web_fetch` |
+| `tester` | Test writer and runner | `bash`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `list_dir` |
+| `general` | Default (full tool set) | all parent tools |
+
+Add custom profiles in `spaid.toml` under `[[subagent.profiles]]`. User profiles
+override builtins of the same name:
+
+```toml
+[[subagent.profiles]]
+name         = "deployer"
+description  = "CI/CD expert."
+system_prompt = "You are a deployment expert. Run CI commands and inspect logs."
+tools        = ["bash", "read_file", "glob", "grep", "list_dir", "git"]
+```
 
 Sessions are file-backed and auto-compact when they grow large.
 

@@ -373,15 +373,16 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 	}
 
 	agentCfg := agent.Config{
-		Mode:          mode,
-		MaxIterations: a.cfg.Agent.MaxIterations,
-		Verbose:       a.cfg.Agent.Verbose || req.Agent.Verbose,
-		WorkingDir:    req.WorkingDir,
-		GitBranch:     req.GitBranch,
-		Stdin:         req.Stdin,
-		Policy:        policy,
-		Sandbox:       sb,
-		Trusted:       trusted,
+		Mode:             mode,
+		MaxIterations:    a.cfg.Agent.MaxIterations,
+		Verbose:          a.cfg.Agent.Verbose || req.Agent.Verbose,
+		WorkingDir:       req.WorkingDir,
+		GitBranch:        req.GitBranch,
+		Stdin:            req.Stdin,
+		Policy:           policy,
+		Sandbox:          sb,
+		Trusted:          trusted,
+		SubagentProfiles: convertProfiles(a.cfg.Subagent.Profiles),
 	}
 
 	ag := agent.NewWithRegistry(provider, agentCfg, confirmFn, a.toolRegistry(sb, trusted))
@@ -498,6 +499,25 @@ func (a *App) maybeAutoCompact(ctx context.Context, sess *session.Session, provi
 	}
 	sess.CompactOlder(summary, keep)
 	log.Printf("auto-compacted session to ~%d tokens", sess.ApproxTokens())
+}
+
+// convertProfiles maps config-layer SubagentProfile entries to the agent-layer
+// type. The two types are intentionally separate so the agent package does not
+// import config (which would couple the two layers).
+func convertProfiles(src []config.SubagentProfile) []agent.SubagentProfile {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]agent.SubagentProfile, len(src))
+	for i, p := range src {
+		out[i] = agent.SubagentProfile{
+			Name:         p.Name,
+			Description:  p.Description,
+			SystemPrompt: p.SystemPrompt,
+			Tools:        p.Tools,
+		}
+	}
+	return out
 }
 
 // RunLLM dispatches a local-model management command (status/install/list/...).

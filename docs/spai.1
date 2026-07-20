@@ -514,7 +514,29 @@ Network access.
 Ephemeral execution of Python, Node, Ruby, or Go snippets.
 .TP
 .B delegate
-Spawn a nested sub-agent (depth limited to 1).
+Spawn a named nested sub-agent (depth limited to 1). An optional
+.B profile
+argument selects a named agent profile that runs the sub-agent with a focused
+system prompt and a restricted tool allowlist. Three profiles are built in:
+.B reviewer
+(read-only analysis),
+.B tester
+(test writing and running), and
+.B general
+(full tool set, default when no profile is specified). Additional profiles can
+be defined in
+.I spaid.toml
+under
+.B [[subagent.profiles]]
+\(em each entry has a
+.B name ,
+.B system_prompt ,
+and
+.B tools
+(allowlist) field. A profile's tool allowlist is always a strict subset of the
+parent agent's tools; a sub-agent can never be granted capabilities the parent
+lacks. Every action the sub-agent takes is still gated through the same
+confirmation tiers as a top-level call.
 .SH SEE ALSO
 .BR less (1),
 .BR ollama (1)

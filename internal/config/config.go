@@ -18,6 +18,25 @@ type Config struct {
 	MCP         MCPConfig         `toml:"mcp"`
 	Sandbox     SandboxConfig     `toml:"sandbox"`
 	Retry       RetryConfig       `toml:"retry"`
+	Subagent    SubagentConfig    `toml:"subagent"`
+}
+
+// SubagentConfig holds the named agent profile definitions. Zero value (no
+// [[subagent.profiles]] entries) is valid: the agent package supplies built-in
+// defaults for the standard profiles.
+type SubagentConfig struct {
+	Profiles []SubagentProfile `toml:"profiles"`
+}
+
+// SubagentProfile defines a named delegation target. When the parent model
+// calls the delegate tool with a matching profile name, the sub-agent runs
+// with this system prompt and is restricted to the listed tools. An empty
+// Tools list means "inherit all parent tools without restriction".
+type SubagentProfile struct {
+	Name         string   `toml:"name"`
+	Description  string   `toml:"description"`
+	SystemPrompt string   `toml:"system_prompt"`
+	Tools        []string `toml:"tools"`
 }
 
 // SandboxConfig is the opt-in, default-OFF execution sandbox for the bash and
