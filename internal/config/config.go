@@ -24,6 +24,23 @@ type Config struct {
 	// [[hooks]] table. Zero entries (absent [[hooks]]) means no hooks, i.e.
 	// behaviour identical to today.
 	Hooks []HookSpec `toml:"hooks"`
+
+	// Memory configures the cross-session learned memory store. The zero value
+	// (absent [memory] section) disables the feature, preserving existing behaviour.
+	Memory MemoryConfig `toml:"memory"`
+}
+
+// MemoryConfig holds the cross-session learned memory configuration.
+// The zero value (absent [memory] section) disables the feature.
+type MemoryConfig struct {
+	// Enabled opts in to learned memory. Default false (feature off). When
+	// false, the remember_fact tool is not registered and no ## Learned context
+	// section appears in the system prompt.
+	Enabled bool `toml:"enabled"`
+	// MaxFacts caps the number of stored facts in .spai/memory.jsonl. Oldest
+	// entries are pruned when the limit is exceeded. 0 resolves to
+	// session.DefaultMaxFacts (200) inside the memory store.
+	MaxFacts int `toml:"max_facts"`
 }
 
 // HookSpec is one user-configured shell hook run around tool execution. A

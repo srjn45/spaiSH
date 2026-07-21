@@ -408,6 +408,25 @@ Scaffold one with
 .B /init
 inside the REPL or
 .BR "spai init" .
+.TP
+.I .spai/memory.jsonl
+Per-project learned memory store (JSONL, one fact per line).
+Written by the
+.B remember_fact
+tool when
+.B [memory] enabled = true
+in
+.IR spaid.toml .
+Contains key/value facts the agent has learned across sessions
+(e.g. the project's build command, coding conventions).
+Injected into the system prompt as a
+.B ## Learned context
+section, after
+.IR SPAI.md .
+Facts added during a session take effect in the next session.
+To disable, set
+.B [memory] enabled = false
+(the default) or remove the section.
 .SH EXAMPLES
 One-shot query:
 .PP
@@ -535,6 +554,20 @@ Network access.
 .TP
 .B code_exec
 Ephemeral execution of Python, Node, Ruby, or Go snippets.
+.TP
+.B remember_fact
+Persist a learned key/value fact to
+.I .spai/memory.jsonl
+so it is available in future sessions.
+The
+.B key
+field is a short unique identifier (e.g. \(lqbuild-command\(rq); storing to an
+existing key updates its value in place.
+Only available when
+.B [memory] enabled = true
+is set in
+.IR spaid.toml .
+Classified at Read tier (no confirmation prompt).
 .TP
 .B delegate
 Spawn a named nested sub-agent (depth limited to 1). An optional

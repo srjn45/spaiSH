@@ -158,6 +158,7 @@ back until the task is done.
 | `code_exec` | Ephemeral Python/Node/Ruby/Go execution | Write |
 | `read_image` | Read an image file for vision models | Read |
 | `todo_write` | Manage an in-session task list | Write |
+| `remember_fact` | Persist a learned key/value fact across sessions | Read |
 | `delegate` | Spawn a named nested subagent (depth-limited to 1) | Write |
 
 Command safety is decided by **parsing** each shell command (not substring
@@ -238,6 +239,29 @@ description  = "CI/CD expert."
 system_prompt = "You are a deployment expert. Run CI commands and inspect logs."
 tools        = ["bash", "read_file", "glob", "grep", "list_dir", "git"]
 ```
+
+**Cross-session learned memory** lets the agent persist facts it discovers
+(e.g. "the build command is `make gen`", "prefer table-driven tests") to
+`.spai/memory.jsonl` so they are injected into future sessions automatically.
+Enable it in the optional `[memory]` section:
+
+```toml
+[memory]
+enabled   = true  # opt-in; default false
+max_facts = 200   # entries cap; oldest pruned when exceeded (default 200)
+```
+
+When enabled, the agent can call the `remember_fact` tool to record a fact:
+
+```
+remember_fact(key="build-command", value="make gen")
+```
+
+Facts are deduped by `key` (storing to an existing key updates the value) and
+injected as a `## Learned context` section in the system prompt, after
+`SPAI.md`. Facts written during a session take effect in the **next** session —
+these are cross-session, not in-session, memories. Leave the section absent
+(the default) for behaviour identical to before.
 
 Sessions are file-backed and auto-compact when they grow large.
 

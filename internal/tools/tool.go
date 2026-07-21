@@ -184,6 +184,16 @@ func QueryArg(input json.RawMessage) string {
 	return args.Query
 }
 
+// KeyArg extracts the "key" field from a tool call input, for display in
+// the confirmation prompt. Returns "" when absent.
+func KeyArg(input json.RawMessage) string {
+	var args struct {
+		Key string `json:"key"`
+	}
+	_ = json.Unmarshal(input, &args)
+	return args.Key
+}
+
 // tailTrim returns the last maxBytes bytes of s, prefixed with a notice when
 // truncation occurs. Tool output is capped to keep the model's context bounded.
 func tailTrim(s string, maxBytes int) string {

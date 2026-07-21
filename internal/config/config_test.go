@@ -341,6 +341,47 @@ func TestLoadRoutingModelFieldsDefaultEmpty(t *testing.T) {
 	}
 }
 
+// TestLoadMemorySection verifies [memory] enabled/max_facts parse correctly.
+func TestLoadMemorySection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spaid.toml")
+	os.WriteFile(path, []byte(`
+[memory]
+enabled   = true
+max_facts = 50
+`), 0644)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Memory.Enabled {
+		t.Errorf("Memory.Enabled = false, want true")
+	}
+	if cfg.Memory.MaxFacts != 50 {
+		t.Errorf("Memory.MaxFacts = %d, want 50", cfg.Memory.MaxFacts)
+	}
+}
+
+// TestMemoryDefaultsDisabled verifies an absent [memory] section yields the
+// disabled zero value, i.e. behaviour identical to before WP3.4.
+func TestMemoryDefaultsDisabled(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spaid.toml")
+	os.WriteFile(path, []byte("[provider]\nmodel = \"x\"\n"), 0644)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Memory.Enabled {
+		t.Errorf("absent [memory] should be disabled, got Enabled=true")
+	}
+	if cfg.Memory.MaxFacts != 0 {
+		t.Errorf("absent [memory] MaxFacts should be 0, got %d", cfg.Memory.MaxFacts)
+	}
+}
+
 // TestHooksDefaultsEmpty verifies an absent [[hooks]] section yields no hooks,
 // i.e. behaviour identical to today.
 func TestHooksDefaultsEmpty(t *testing.T) {

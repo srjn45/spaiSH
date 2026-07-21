@@ -67,6 +67,14 @@ type Config struct {
 	// reasoning turns when task-based routing is configured. An empty string keeps
 	// the provider's own configured model, preserving all existing behaviour.
 	ModelOverride string
+
+	// LearnedContext holds the pre-loaded learned facts for this session,
+	// formatted as a bullet list for injection into the system prompt. Empty
+	// when memory is disabled or no facts have been stored yet. Populated once
+	// at the start of each agent run by app.RunAgent and passed through here so
+	// facts written during this session (via remember_fact) take effect in the
+	// next session — the intended cross-session semantics.
+	LearnedContext string
 }
 
 // ConfirmFunc is called when a tier-gated tool call needs user approval.
@@ -159,6 +167,9 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 	system := base + "\n\nWorking directory: " + a.config.WorkingDir
 	if spaiCtx := a.loadProjectContextCached(); spaiCtx != "" {
 		system += "\n\n## Project instructions (SPAI.md)\n" + spaiCtx
+	}
+	if a.config.LearnedContext != "" {
+		system += "\n\n## Learned context\n" + a.config.LearnedContext
 	}
 	if a.config.GitBranch != "" {
 		system += "\nGit branch: " + a.config.GitBranch
@@ -393,6 +404,8 @@ func classify(tc ai.ToolCall) (permissions.Tier, string) {
 		return tools.GHTier(sub), display
 	case "todo_write":
 		return permissions.TierRead, "updating task list"
+	case "remember_fact":
+		return permissions.TierRead, "remember_fact " + tools.KeyArg(tc.Input)
 	case "code_exec":
 		// Runs arbitrary Python/Node with the same OS privileges as bash and is
 		// not sandboxed, so it gets bash's worst-case tier — no easier ride just

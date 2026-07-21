@@ -403,9 +403,10 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 		Hooks:            hookRunner,
 		SubagentProfiles: convertProfiles(a.cfg.Subagent.Profiles),
 		ModelOverride:    a.router.ModelFor(ai.TaskKindReasoning),
+		LearnedContext:   a.loadLearnedContext(req.WorkingDir),
 	}
 
-	ag := agent.NewWithRegistry(provider, agentCfg, confirmFn, a.toolRegistry(sb, trusted))
+	ag := agent.NewWithRegistry(provider, agentCfg, confirmFn, a.toolRegistry(sb, trusted, req.WorkingDir))
 
 	var fullText, outputText strings.Builder
 	for resp := range ag.Run(ctx, req.Agent, sess) {
@@ -429,13 +430,40 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 
 // toolRegistry returns the built-in tools (with the execution sandbox injected
 // into bash/code_exec) plus any tools discovered from the configured MCP
-// servers. A nil/disabled sandbox leaves those tools unwrapped. The MCP servers
+// servers. When [memory] is enabled it also includes the remember_fact tool.
+// A nil/disabled sandbox leaves bash/code_exec unwrapped. The MCP servers
 // are spawned once per session.
-func (a *App) toolRegistry(sb sandbox.Sandbox, trusted func(cmd string) bool) *tools.Registry {
+func (a *App) toolRegistry(sb sandbox.Sandbox, trusted func(cmd string) bool, workingDir string) *tools.Registry {
 	a.ensureMCP()
 	reg := tools.RegistryWithSandbox(sb, trusted)
+	if a.cfg.Memory.Enabled {
+		reg.Add(&tools.RememberFact{WorkingDir: workingDir, MaxFacts: a.cfg.Memory.MaxFacts})
+	}
 	reg.Add(a.mcpTools...)
 	return reg
+}
+
+// loadLearnedContext reads the project's .spai/memory.jsonl and returns the
+// facts formatted for injection into the system prompt. Returns "" when memory
+// is disabled or no facts exist.
+func (a *App) loadLearnedContext(workingDir string) string {
+	if !a.cfg.Memory.Enabled {
+		return ""
+	}
+	store := session.NewMemoryStore(workingDir, a.cfg.Memory.MaxFacts)
+	facts, err := store.Load()
+	if err != nil {
+		log.Printf("memory: load warning: %v", err)
+		return ""
+	}
+	if len(facts) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, f := range facts {
+		fmt.Fprintf(&b, "- %s: %s\n", f.Key, f.Value)
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // ensureMCP spawns the configured MCP servers exactly once, discovers their
