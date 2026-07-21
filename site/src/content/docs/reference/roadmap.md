@@ -53,6 +53,17 @@ The core agent is built and working:
       (pinned/current/shell markers, message count, relative age) without
       leaving the interactive session, and a `capOutputLines` cap (40 lines)
       on long `output`-type tool responses in the TTY renderer
+- [x] `cmd/spai` & `internal/app` test coverage — provider/config/MCP-lifecycle
+      helpers in `internal/app` (19.1% → 42.3% package coverage), and session,
+      disclaimer, and git-branch CLI helpers in `cmd/spai` (6.8% → 29.4%
+      package coverage). The `RunAgent`/`RunSession`/`streamText` event-loop
+      and interactive prompts (`main`, `init.go`) remain out of scope —
+      candidates for a future, heavier test-harness task
+- [x] Provider & tool breadth — a new `web_search` tool
+      (`internal/tools/web_search.go`) using DuckDuckGo's keyless HTML
+      endpoint (title/url/snippet results, capped at 10, `TierRead`), and
+      `code_exec` language support extended from Python/Node to also cover
+      Ruby and Go (`go run`), with `Description`/`Schema` updated accordingly
 
 ## Next
 
@@ -189,6 +200,14 @@ _All Tier 3 items shipped — see Recently completed._
       interactive session, reusing `session.ListSessions()`/`ReadPinned()`
 - [x] Terminal-friendly long tool-output display — `capOutputLines` line cap
       in the REPL renderer, separate from the tool layer's byte-level cap
+- [x] `internal/app` provider/config/MCP-lifecycle test coverage (19.1% →
+      42.3%)
+- [x] `cmd/spai` session, disclaimer, and git-branch helper test coverage
+      (6.8% → 29.4%)
+- [x] `web_search` tool — keyless DuckDuckGo HTML-backend search, capped
+      title/url/snippet results
+- [x] `code_exec` language breadth — added Ruby and Go (`go run`) alongside
+      Python and Node
 
 ## Parked ideas
 
