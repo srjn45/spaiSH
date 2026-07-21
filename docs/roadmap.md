@@ -77,11 +77,17 @@ _All Tier 2 items shipped — see Recently completed._
 
 ### Tier 3 — polish
 
-- [ ] Session memory — auto-learned facts persisted across sessions,
-      beyond the static `SPAI.md`.
+_All Tier 3 items shipped — see Recently completed._
 
 ## Recently completed
 
+- [x] Cross-session learned memory — a `remember_fact` tool the agent calls
+      to persist key/value facts (e.g. "build-command: make gen") to
+      `.spai/memory.jsonl`. Facts are deduped by key, capped at a configurable
+      limit (default 200), and injected as a `## Learned context` section in
+      the system prompt after `SPAI.md` on future sessions. Opt-in via
+      `[memory] enabled = true` in `spaid.toml`; disabled by default so
+      existing sessions are unchanged.
 - [x] Model routing — task-based model selection: a cheap/fast model
       (`model_small`) for summarisation and auto-compact calls, and a
       reasoning-capable model (`model_strong`) for the main agent
