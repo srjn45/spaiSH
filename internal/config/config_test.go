@@ -257,3 +257,59 @@ func TestSandboxDefaultsDisabled(t *testing.T) {
 		t.Errorf("absent [sandbox] Backend should be empty, got %q", cfg.Sandbox.Backend)
 	}
 }
+
+// TestLoadHooks verifies [[hooks]] array-of-tables parses into HookSpec entries
+// with all fields, and that an absent [[hooks]] section yields no hooks.
+func TestLoadHooks(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spaid.toml")
+	os.WriteFile(path, []byte(`
+[provider]
+model = "x"
+
+[[hooks]]
+event       = "pre_tool"
+match       = "write_file"
+input_field = "path"
+input_match = "^vendor/"
+command     = "echo nope >&2; exit 1"
+timeout_ms  = 5000
+
+[[hooks]]
+event   = "post_tool"
+match   = "edit_file"
+command = "gofmt -w foo.go"
+`), 0644)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Hooks) != 2 {
+		t.Fatalf("got %d hooks, want 2", len(cfg.Hooks))
+	}
+	h := cfg.Hooks[0]
+	if h.Event != "pre_tool" || h.Match != "write_file" || h.InputField != "path" ||
+		h.InputMatch != "^vendor/" || h.Command != "echo nope >&2; exit 1" || h.TimeoutMS != 5000 {
+		t.Errorf("hooks[0] = %+v", h)
+	}
+	if cfg.Hooks[1].Event != "post_tool" || cfg.Hooks[1].Match != "edit_file" {
+		t.Errorf("hooks[1] = %+v", cfg.Hooks[1])
+	}
+}
+
+// TestHooksDefaultsEmpty verifies an absent [[hooks]] section yields no hooks,
+// i.e. behaviour identical to today.
+func TestHooksDefaultsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spaid.toml")
+	os.WriteFile(path, []byte("[provider]\nmodel = \"x\"\n"), 0644)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Hooks) != 0 {
+		t.Errorf("absent [[hooks]] should yield 0 hooks, got %d", len(cfg.Hooks))
+	}
+}

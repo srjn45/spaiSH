@@ -70,8 +70,6 @@ _All Tier 2 items shipped — see Recently completed._
 
 ### Tier 3 — polish
 
-- [ ] Pre/post-tool-use hooks — e.g. auto-`gofmt` after edits, or
-      block configured command patterns.
 - [ ] Model routing — a cheap model for classification/safety, an
       expensive one for reasoning.
 - [ ] REPL polish — multiline input, fuzzy `@file` completion, and
@@ -81,6 +79,16 @@ _All Tier 2 items shipped — see Recently completed._
 
 ## Recently completed
 
+- [x] Pre/post-tool-use hooks — user-configured shell commands run around tool
+      execution via `[[hooks]]` in `spaid.toml`. A `pre_tool` hook can refuse an
+      already-approved tool call (a non-zero exit blocks it and its stderr
+      becomes the model-visible reason); a `post_tool` hook observes a
+      successful call (e.g. auto-`gofmt` an edited file) without ever undoing it.
+      Hooks target tools by name glob and an optional matcher on the tool input.
+      They are pure defense-in-depth layered on top of the tier/confirm gate — a
+      hook fires only after the user has approved a call and can only add
+      restrictions, never auto-approve, satisfy a confirm prompt, or change a
+      tier. Zero `[[hooks]]` means behaviour identical to before.
 - [x] Named specialized subagents — the `delegate` tool now accepts an optional
       `profile` argument (`reviewer`, `tester`, `general`) that runs the
       sub-agent with a focused system prompt and a restricted tool allowlist.

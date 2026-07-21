@@ -537,6 +537,49 @@ and
 parent agent's tools; a sub-agent can never be granted capabilities the parent
 lacks. Every action the sub-agent takes is still gated through the same
 confirmation tiers as a top-level call.
+.SH HOOKS
+User shell hooks run around tool execution, one per
+.B [[hooks]]
+table in
+.IR spaid.toml .
+A hook with
+.B event = "pre_tool"
+runs before a tool and can refuse it: a non-zero exit blocks the call and the
+hook's standard error becomes the reason surfaced to the model. A hook with
+.B event = "post_tool"
+runs after a tool succeeds and is observe-only \(em its failure is reported but
+never undoes the tool. A hook matches when its
+.B match
+glob (\fBpath.Match\fR semantics) matches the tool name and, if present, its
+.B input_match
+RE2 pattern matches either the named
+.B input_field
+of the tool input or, when no field is named, the entire raw JSON input. The
+hook command receives the raw JSON input on standard input and the
+.BR SPAI_HOOK_EVENT ,
+.BR SPAI_TOOL_NAME ,
+.BR SPAI_TOOL_INPUT ,
+and
+.B SPAI_TOOL_OUTPUT
+(post only) environment variables;
+.B timeout_ms
+(default 30000) hard-kills a slow hook.
+.PP
+A
+.B pre_tool
+hook fires only after the tier/confirm gate has already approved the call, so it
+is pure defense-in-depth: it can only add a restriction, never auto-approve,
+skip a confirmation prompt, or change a tool's tier. A hook
+.B command
+is arbitrary shell run with the user's privileges via
+.BR sh (1)
+\(em the same trust level as
+.I SPAI.md
+and
+.BR [permissions].allow_commands ,
+not a sandbox against the model. Absent
+.B [[hooks]]
+means no hooks and behaviour identical to before.
 .SH SEE ALSO
 .BR less (1),
 .BR ollama (1)

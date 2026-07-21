@@ -17,6 +17,7 @@ import (
 	"spaish/internal/agent"
 	"spaish/internal/ai"
 	"spaish/internal/config"
+	"spaish/internal/hooks"
 	"spaish/internal/llm"
 	"spaish/internal/mcp"
 	"spaish/internal/permissions"
@@ -372,6 +373,15 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 		trusted = policy.MatchesAllowCommand
 	}
 
+	// Build the hook runner once from config. Fail closed: a misconfigured hook
+	// (bad glob/regexp, unknown event, empty command) aborts the run rather than
+	// silently dropping guard rails. Hooks are layered AROUND the permission gate
+	// above — a pre_tool hook can only refuse an already-approved call.
+	hookRunner, err := hooks.New(a.cfg.Hooks, req.WorkingDir)
+	if err != nil {
+		return fmt.Errorf("hooks init: %w", err)
+	}
+
 	agentCfg := agent.Config{
 		Mode:             mode,
 		MaxIterations:    a.cfg.Agent.MaxIterations,
@@ -382,6 +392,7 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 		Policy:           policy,
 		Sandbox:          sb,
 		Trusted:          trusted,
+		Hooks:            hookRunner,
 		SubagentProfiles: convertProfiles(a.cfg.Subagent.Profiles),
 	}
 

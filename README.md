@@ -223,6 +223,53 @@ Sessions are file-backed and auto-compact when they grow large.
 
 ---
 
+## Hooks
+
+Hooks run your own shell commands **around** tool execution, layered on top of
+the permission gate. Add one `[[hooks]]` block per hook to `spaid.toml`:
+
+```toml
+# Refuse any write under vendor/ even after you approve it.
+[[hooks]]
+event       = "pre_tool"
+match       = "write_file"     # glob on the tool name (path.Match)
+input_field = "path"           # optional: test this top-level input field…
+input_match = "^vendor/"       # …against this RE2 pattern
+command     = 'echo "no writes under vendor/" >&2; exit 1'
+timeout_ms  = 5000             # default 30000
+
+# Auto-gofmt a Go file after it is edited (fire-and-observe).
+[[hooks]]
+event       = "post_tool"
+match       = "edit_file"
+input_field = "path"
+input_match = '\.go$'
+command     = 'gofmt -w "$(jq -r .path <<< "$SPAI_TOOL_INPUT")"'
+```
+
+- **`pre_tool`** runs *before* a tool. A **non-zero exit refuses the call** and
+  the hook's stderr becomes the reason surfaced to the model.
+- **`post_tool`** runs *after* a tool **succeeds** and is observe-only; a failure
+  is reported but never undoes the tool.
+- **Matching** requires both the name glob (`match`) and, when set, `input_match`
+  (RE2) against either the named `input_field` (coerced to a string) or — with no
+  `input_field` — the whole raw JSON input.
+- The hook gets the raw JSON tool input on **stdin** plus `SPAI_HOOK_EVENT`,
+  `SPAI_TOOL_NAME`, `SPAI_TOOL_INPUT`, and `SPAI_TOOL_OUTPUT` (post only) in its
+  environment. `timeout_ms` hard-kills a slow hook.
+
+A `pre_tool` hook fires **only after** the tier/confirm gate has already
+*approved* the call, so it is pure defense-in-depth: it can only **add** a
+restriction — never auto-approve, satisfy a confirm prompt, or change a tool's
+tier. Absent `[[hooks]]` means no hooks, i.e. behaviour identical to before.
+
+> **Security:** a hook `command` is arbitrary shell run with **your**
+> privileges via `sh -c` — the same trust level as `SPAI.md` and
+> `[permissions].allow_commands`. Hooks are your own code, **not** a sandbox
+> against the model, and never bypass the permission gate.
+
+---
+
 ## MCP servers
 
 `spai` can connect to external [MCP](https://modelcontextprotocol.io) servers and

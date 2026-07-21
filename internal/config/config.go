@@ -19,6 +19,30 @@ type Config struct {
 	Sandbox     SandboxConfig     `toml:"sandbox"`
 	Retry       RetryConfig       `toml:"retry"`
 	Subagent    SubagentConfig    `toml:"subagent"`
+
+	// Hooks are user-configured shell hooks run around tool execution, one per
+	// [[hooks]] table. Zero entries (absent [[hooks]]) means no hooks, i.e.
+	// behaviour identical to today.
+	Hooks []HookSpec `toml:"hooks"`
+}
+
+// HookSpec is one user-configured shell hook run around tool execution. A
+// pre_tool hook may refuse an already-approved tool call; a post_tool hook
+// observes a call that has already succeeded.
+//
+// SECURITY: command is arbitrary shell run via `sh -c` with the user's full
+// privileges — the same trust level as SPAI.md and [permissions].allow_commands.
+// Hooks are the operator's own code, NOT a sandbox against the model, and NEVER
+// bypass the permission gate: a pre_tool hook can only refuse a call the user
+// has already approved, never auto-approve, satisfy a confirm prompt, or change
+// a tool's tier.
+type HookSpec struct {
+	Event      string `toml:"event"`       // "pre_tool" | "post_tool"
+	Match      string `toml:"match"`       // required glob on the tool name
+	InputField string `toml:"input_field"` // optional top-level JSON key to test
+	InputMatch string `toml:"input_match"` // optional RE2 pattern
+	Command    string `toml:"command"`     // required shell command
+	TimeoutMS  int    `toml:"timeout_ms"`  // default 30000
 }
 
 // SubagentConfig holds the named agent profile definitions. Zero value (no
