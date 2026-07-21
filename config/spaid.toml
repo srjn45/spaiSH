@@ -144,3 +144,47 @@ trust_allowlisted_commands = false
 # name = "git"
 # command = "uvx"
 # args = ["mcp-server-git", "--repository", "/path/to/repo"]
+
+# User shell hooks run AROUND tool execution. Each [[hooks]] block is one hook.
+#
+#   event  = "pre_tool"  runs BEFORE a tool; a non-zero exit REFUSES the call
+#                        and the hook's stderr becomes the reason shown to the
+#                        model. It fires only AFTER the tier/confirm gate has
+#                        already approved the call — it can only add a restriction,
+#                        never auto-approve, skip a confirm prompt, or change a tier.
+#   event  = "post_tool" runs AFTER a tool SUCCEEDS; observe-only. A failure is
+#                        surfaced to the user but never undoes the tool.
+#
+# Matching (both must hold): `match` is a glob on the tool name (path.Match
+# semantics: `*`, `?`, `[...]`), e.g. "write_file", "*_file", "mcp__*", "*".
+# Optionally `input_match` (an RE2 regexp) is tested against either the named
+# top-level input field (`input_field`) coerced to a string, or — when
+# input_field is empty — the entire raw JSON input.
+#
+# The hook receives the raw JSON tool input on stdin and these env vars:
+#   SPAI_HOOK_EVENT, SPAI_TOOL_NAME, SPAI_TOOL_INPUT, SPAI_TOOL_OUTPUT (post only).
+# `timeout_ms` (default 30000) hard-kills a slow hook; a timeout blocks (pre) or
+# fails (post).
+#
+# SECURITY: `command` is arbitrary shell run with YOUR privileges via `sh -c` —
+# the same trust level as SPAI.md and [permissions].allow_commands. Hooks are
+# your own code, NOT a sandbox against the model, and NEVER bypass the permission
+# gate. Absent [[hooks]] means no hooks (behaviour identical to today).
+#
+# Block any write under vendor/ even after you approve it:
+# [[hooks]]
+# event       = "pre_tool"
+# match       = "write_file"
+# input_field = "path"
+# input_match = "^vendor/"
+# command     = 'echo "refusing writes under vendor/" >&2; exit 1'
+# timeout_ms  = 5000
+#
+# Auto-gofmt a Go file after it is edited (fire-and-observe):
+# [[hooks]]
+# event       = "post_tool"
+# match       = "edit_file"
+# input_field = "path"
+# input_match = '\.go$'
+# command     = 'gofmt -w "$(jq -r .path <<< "$SPAI_TOOL_INPUT")"'
+# timeout_ms  = 10000

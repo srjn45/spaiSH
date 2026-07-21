@@ -82,9 +82,10 @@ func resolveProfile(userProfiles []SubagentProfile, name string) (SubagentProfil
 // The nested loop gets a strictly smaller MaxIterations budget so a runaway
 // sub-agent can never burn as many turns as its parent, and it does not inherit
 // the parent's piped stdin (that belonged to the top-level query, not the
-// sub-task). WorkingDir, GitBranch, Mode, and Policy are inherited unchanged so
-// the nested loop is gated exactly like the parent — same confirmation tiers,
-// same policy — just scoped to a smaller budget.
+// sub-task). WorkingDir, GitBranch, Mode, Policy, Sandbox, and Hooks are
+// inherited unchanged (child := parent copies them) so the nested loop is gated
+// and hooked exactly like the parent — same confirmation tiers, same policy,
+// same defense-in-depth — just scoped to a smaller budget.
 func childConfig(parent Config) Config {
 	child := parent
 	base := parent.MaxIterations

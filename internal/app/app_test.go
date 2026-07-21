@@ -1,12 +1,14 @@
 package app
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"spaish/internal/ai"
 	"spaish/internal/config"
+	"spaish/internal/protocol"
 )
 
 func TestConfigPath(t *testing.T) {
@@ -269,5 +271,25 @@ func TestActiveModelGetter(t *testing.T) {
 	a := newTestApp()
 	if got := a.ActiveModel(); got != a.activeModel {
 		t.Errorf("ActiveModel() = %q, want %q", got, a.activeModel)
+	}
+}
+
+// TestRunAgentFailsClosedOnBadHook verifies a misconfigured [[hooks]] entry
+// aborts RunAgent rather than silently dropping the guard rail (fail closed,
+// mirroring the sandbox-init behaviour).
+func TestRunAgentFailsClosedOnBadHook(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	a := newTestApp() // cloud provider is available (has API key)
+	a.cfg.Hooks = []config.HookSpec{
+		{Event: "pre_tool", Match: "[", Command: "true"}, // "[" is an invalid glob
+	}
+	err := a.RunAgent(
+		context.Background(),
+		&protocol.Request{Agent: &protocol.AgentRequest{Query: "hi"}, WorkingDir: t.TempDir()},
+		func(protocol.ConfirmRequest) bool { return true },
+		func(protocol.Response) {},
+	)
+	if err == nil || !strings.Contains(err.Error(), "hooks init") {
+		t.Errorf("RunAgent with a bad hook = %v, want a hooks init error", err)
 	}
 }

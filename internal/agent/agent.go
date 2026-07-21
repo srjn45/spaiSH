@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"spaish/internal/ai"
+	"spaish/internal/hooks"
 	"spaish/internal/permissions"
 	"spaish/internal/protocol"
 	"spaish/internal/sandbox"
@@ -40,6 +41,13 @@ type Config struct {
 	// under (never in place of) the permission gate. nil means no sandbox. It is
 	// inherited by delegated sub-agents so defense-in-depth extends to them.
 	Sandbox sandbox.Sandbox
+
+	// Hooks are user-configured shell hooks run AROUND tool execution, layered on
+	// top of (never in place of) the permission gate. The zero value has no hooks,
+	// preserving legacy behaviour. A pre_tool hook may only BLOCK an already-
+	// approved call; it can never auto-approve or change a tool's tier. Like
+	// Sandbox, it is inherited by delegated sub-agents.
+	Hooks hooks.Runner
 	// Trusted marks bash commands exempt from the sandbox (the allow_commands
 	// carve-out). nil trusts nothing.
 	Trusted func(cmd string) bool
@@ -301,6 +309,19 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 				send(ctx, ch, protocol.Response{Type: "text", Content: fmt.Sprintf("▶ %s\n", display)})
 			}
 
+			// pre_tool hooks fire only AFTER the tier/confirm gate has approved this
+			// call (a cancelled call returns above and never reaches here) and BEFORE
+			// the tool runs. A block refuses the already-permitted tool — pure
+			// defense-in-depth, never a bypass. Mirrors the Policy-deny path above:
+			// error result + continue, and tool.Run is NOT called.
+			preInv := hooks.Invocation{Tool: tc.Name, Input: tc.Input}
+			if be := a.config.Hooks.RunPre(ctx, preInv); be != nil {
+				content := be.Error()
+				results = append(results, ai.ToolResult{ToolUseID: tc.ID, Content: content, IsError: true})
+				send(ctx, ch, protocol.Response{Type: "output", Content: content + "\n"})
+				continue
+			}
+
 			out, runErr := tool.Run(ctx, tc.Input)
 			isErr := runErr != nil
 			content := out
@@ -316,6 +337,17 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 				}
 			}
 			results = append(results, result)
+
+			// post_tool hooks are observe-only and run only when the tool SUCCEEDED.
+			// The result above is already recorded; a hook failure is surfaced but
+			// never undoes the tool.
+			if !isErr {
+				postInv := hooks.Invocation{Tool: tc.Name, Input: tc.Input, Output: out}
+				for _, hf := range a.config.Hooks.RunPost(ctx, postInv) {
+					send(ctx, ch, protocol.Response{Type: "output",
+						Content: fmt.Sprintf("post_tool hook failed (%s): %s\n", hf.Command, hf.Reason)})
+				}
+			}
 
 			if tc.Name == "todo_write" && !isErr {
 				send(ctx, ch, protocol.Response{Type: "todo", Content: out})
