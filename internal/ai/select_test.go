@@ -90,3 +90,64 @@ func TestSelectUnavailableOverrideFallsBack(t *testing.T) {
 		t.Errorf("expected fallback to cloud, got %v", got.Name())
 	}
 }
+
+func TestModelRouterZeroValue(t *testing.T) {
+	var r ai.ModelRouter
+	if got := r.ModelFor(ai.TaskKindCheap); got != "" {
+		t.Errorf("zero ModelRouter.ModelFor(Cheap) = %q, want empty", got)
+	}
+	if got := r.ModelFor(ai.TaskKindReasoning); got != "" {
+		t.Errorf("zero ModelRouter.ModelFor(Reasoning) = %q, want empty", got)
+	}
+	if r.Enabled() {
+		t.Error("zero ModelRouter.Enabled() = true, want false")
+	}
+}
+
+func TestModelRouterSmallOnly(t *testing.T) {
+	r := ai.ModelRouter{Small: "claude-haiku-4-5"}
+	if got := r.ModelFor(ai.TaskKindCheap); got != "claude-haiku-4-5" {
+		t.Errorf("ModelFor(Cheap) = %q, want claude-haiku-4-5", got)
+	}
+	if got := r.ModelFor(ai.TaskKindReasoning); got != "" {
+		t.Errorf("ModelFor(Reasoning) = %q, want empty (not configured)", got)
+	}
+	if !r.Enabled() {
+		t.Error("ModelRouter.Enabled() = false, want true when Small is set")
+	}
+}
+
+func TestModelRouterStrongOnly(t *testing.T) {
+	r := ai.ModelRouter{Strong: "claude-opus-4-8"}
+	if got := r.ModelFor(ai.TaskKindReasoning); got != "claude-opus-4-8" {
+		t.Errorf("ModelFor(Reasoning) = %q, want claude-opus-4-8", got)
+	}
+	if got := r.ModelFor(ai.TaskKindCheap); got != "" {
+		t.Errorf("ModelFor(Cheap) = %q, want empty (not configured)", got)
+	}
+	if !r.Enabled() {
+		t.Error("ModelRouter.Enabled() = false, want true when Strong is set")
+	}
+}
+
+func TestModelRouterBothConfigured(t *testing.T) {
+	r := ai.ModelRouter{Small: "claude-haiku-4-5", Strong: "claude-opus-4-8"}
+	if got := r.ModelFor(ai.TaskKindCheap); got != "claude-haiku-4-5" {
+		t.Errorf("ModelFor(Cheap) = %q, want claude-haiku-4-5", got)
+	}
+	if got := r.ModelFor(ai.TaskKindReasoning); got != "claude-opus-4-8" {
+		t.Errorf("ModelFor(Reasoning) = %q, want claude-opus-4-8", got)
+	}
+	if !r.Enabled() {
+		t.Error("ModelRouter.Enabled() = false, want true")
+	}
+}
+
+func TestModelRouterUnknownKindReturnsEmpty(t *testing.T) {
+	r := ai.ModelRouter{Small: "haiku", Strong: "opus"}
+	// An unknown TaskKind (e.g. a future value not yet in the switch) returns "".
+	const unknownKind ai.TaskKind = 99
+	if got := r.ModelFor(unknownKind); got != "" {
+		t.Errorf("ModelFor(unknown kind) = %q, want empty", got)
+	}
+}

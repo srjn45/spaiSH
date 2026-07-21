@@ -26,6 +26,14 @@ local_model = "qwen2.5-coder:7b"
 # Set to true to always use the local model (full privacy mode).
 prefer_local = false
 
+# Task-based model routing (optional). When set, spai uses a cheap/fast model
+# for summarisation and auto-compact calls and a reasoning-capable model for the
+# main agent tool-calling loop. Leave both unset to use the configured [provider]
+# model for everything (the default, identical to pre-routing behaviour).
+#
+# model_small  = "claude-haiku-4-5"   # cheap text-only calls (compact, auto-compact)
+# model_strong = "claude-opus-4-8"    # reasoning / tool-calling agent turns
+
 [permissions]
 # Seconds before an elevated (sudo) approval expires and must be re-confirmed.
 sudo_session_timeout = 300

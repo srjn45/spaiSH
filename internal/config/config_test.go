@@ -298,6 +298,49 @@ command = "gofmt -w foo.go"
 	}
 }
 
+// TestLoadRoutingModelFields verifies model_small and model_strong parse from
+// the [routing] section and that absent fields default to the empty string.
+func TestLoadRoutingModelFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spaid.toml")
+	os.WriteFile(path, []byte(`
+[routing]
+prefer_local = false
+model_small  = "claude-haiku-4-5"
+model_strong = "claude-opus-4-8"
+`), 0644)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Routing.ModelSmall != "claude-haiku-4-5" {
+		t.Errorf("Routing.ModelSmall = %q, want claude-haiku-4-5", cfg.Routing.ModelSmall)
+	}
+	if cfg.Routing.ModelStrong != "claude-opus-4-8" {
+		t.Errorf("Routing.ModelStrong = %q, want claude-opus-4-8", cfg.Routing.ModelStrong)
+	}
+}
+
+// TestLoadRoutingModelFieldsDefaultEmpty verifies an absent [routing] section
+// (or one without model_small/model_strong) yields empty strings — routing OFF.
+func TestLoadRoutingModelFieldsDefaultEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "spaid.toml")
+	os.WriteFile(path, []byte("[provider]\nmodel = \"x\"\n"), 0644)
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Routing.ModelSmall != "" {
+		t.Errorf("absent model_small should be empty, got %q", cfg.Routing.ModelSmall)
+	}
+	if cfg.Routing.ModelStrong != "" {
+		t.Errorf("absent model_strong should be empty, got %q", cfg.Routing.ModelStrong)
+	}
+}
+
 // TestHooksDefaultsEmpty verifies an absent [[hooks]] section yields no hooks,
 // i.e. behaviour identical to today.
 func TestHooksDefaultsEmpty(t *testing.T) {

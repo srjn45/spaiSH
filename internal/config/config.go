@@ -126,6 +126,12 @@ type LocalConfig struct {
 type RoutingConfig struct {
 	PassthroughCommands []string `toml:"passthrough_commands"`
 	PreferLocal         bool     `toml:"prefer_local"`
+	// ModelSmall selects a cheap/fast model for summarisation and auto-compact
+	// calls. Empty (the default) uses the provider's configured model unchanged.
+	ModelSmall string `toml:"model_small"`
+	// ModelStrong selects a reasoning-capable model for the agent tool-calling
+	// loop. Empty (the default) uses the provider's configured model unchanged.
+	ModelStrong string `toml:"model_strong"`
 }
 
 type PermissionsConfig struct {

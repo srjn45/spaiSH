@@ -45,6 +45,10 @@ type App struct {
 	activeName  string
 	activeModel string
 
+	// router holds the optional task-based model routing config. The zero value
+	// disables routing (ModelFor always returns ""), preserving default behaviour.
+	router ai.ModelRouter
+
 	// MCP servers are spawned lazily on the first agent run and kept alive for
 	// the rest of the session (so REPL turns reuse the same processes). mcpCtx
 	// owns their lifetime; Close cancels it and shuts the servers down.
@@ -111,6 +115,10 @@ func New() *App {
 		localModel:  localModel,
 		activeName:  name,
 		activeModel: model,
+		router: ai.ModelRouter{
+			Small:  cfg.Routing.ModelSmall,
+			Strong: cfg.Routing.ModelStrong,
+		},
 	}
 }
 
@@ -394,6 +402,7 @@ func (a *App) RunAgent(ctx context.Context, req *protocol.Request, confirmFn age
 		Trusted:          trusted,
 		Hooks:            hookRunner,
 		SubagentProfiles: convertProfiles(a.cfg.Subagent.Profiles),
+		ModelOverride:    a.router.ModelFor(ai.TaskKindReasoning),
 	}
 
 	ag := agent.NewWithRegistry(provider, agentCfg, confirmFn, a.toolRegistry(sb, trusted))
@@ -503,7 +512,7 @@ func (a *App) maybeAutoCompact(ctx context.Context, sess *session.Session, provi
 	msgs = append(msgs, older...)
 	msgs = append(msgs, ai.Message{Role: "user", Content: "Summarise the conversation so far in one concise paragraph, preserving facts and decisions needed to continue."})
 
-	summary, err := ai.CompleteText(ctx, provider, "You compress conversation history into a concise summary for context continuity.", msgs)
+	summary, err := ai.CompleteTextRouted(ctx, provider, "You compress conversation history into a concise summary for context continuity.", msgs, a.router.ModelFor(ai.TaskKindCheap))
 	if err != nil || summary == "" {
 		log.Printf("auto-compact skipped: %v", err)
 		return
@@ -573,7 +582,7 @@ func (a *App) RunSession(ctx context.Context, req *protocol.Request, handle Hand
 		}
 		msgs := []ai.Message{{Role: "system", Content: "Summarise the following conversation concisely. Focus on what was worked on and what was achieved. One short paragraph."}}
 		msgs = append(msgs, sess.Messages...)
-		summary, err := streamText(ctx, provider, msgs, handle)
+		summary, err := streamText(ctx, provider, msgs, handle, a.router.ModelFor(ai.TaskKindCheap))
 		if err != nil {
 			handle(protocol.Response{Type: "error", Content: err.Error()})
 			return
@@ -598,7 +607,7 @@ func (a *App) RunSession(ctx context.Context, req *protocol.Request, handle Hand
 			{Role: "system", Content: "Summarise this conversation history concisely in one paragraph."},
 			{Role: "user", Content: history},
 		}
-		summary, err := streamText(ctx, provider, msgs, handle)
+		summary, err := streamText(ctx, provider, msgs, handle, a.router.ModelFor(ai.TaskKindCheap))
 		if err != nil {
 			handle(protocol.Response{Type: "error", Content: err.Error()})
 			return
@@ -614,16 +623,29 @@ func (a *App) RunSession(ctx context.Context, req *protocol.Request, handle Hand
 	}
 }
 
-// streamText streams a completion to handle and returns the full text.
-func streamText(ctx context.Context, provider ai.Provider, msgs []ai.Message, handle Handler) (string, error) {
-	textCh, err := provider.Complete(ctx, msgs)
+// streamText streams a completion to handle and returns the full text. model
+// overrides the provider's configured model when non-empty (task-based routing).
+// A leading "system"-role message in msgs is extracted and passed out-of-band.
+func streamText(ctx context.Context, provider ai.Provider, msgs []ai.Message, handle Handler, model string) (string, error) {
+	var sys string
+	rest := msgs
+	if len(msgs) > 0 && msgs[0].Role == "system" {
+		sys = msgs[0].Content
+		rest = msgs[1:]
+	}
+	evCh, err := provider.Stream(ctx, ai.Request{System: sys, Messages: rest, Model: model})
 	if err != nil {
 		return "", err
 	}
 	var sb strings.Builder
-	for chunk := range textCh {
-		sb.WriteString(chunk)
-		handle(protocol.Response{Type: "text", Content: chunk})
+	for ev := range evCh {
+		switch ev.Type {
+		case "text":
+			sb.WriteString(ev.Text)
+			handle(protocol.Response{Type: "text", Content: ev.Text})
+		case "error":
+			return sb.String(), &ai.ProviderError{Message: ev.Err}
+		}
 	}
 	return sb.String(), nil
 }

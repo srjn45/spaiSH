@@ -70,13 +70,16 @@ _All Tier 2 items shipped — see Recently completed._
 
 ### Tier 3 — polish
 
-- [ ] Model routing — a cheap model for classification/safety, an
-      expensive one for reasoning.
 - [ ] Session memory — auto-learned facts persisted across sessions,
       beyond the static `SPAI.md`.
 
 ## Recently completed
 
+- [x] Model routing — task-based model selection: a cheap/fast model
+      (`model_small`) for summarisation and auto-compact calls, and a
+      reasoning-capable model (`model_strong`) for the main agent
+      tool-calling loop. Configured via `[routing]` in `spaid.toml`; both
+      fields default to empty, preserving all existing behaviour unchanged.
 - [x] REPL polish — three interactive niceties, each degrading to today's plain
       behaviour off a TTY (or under `NO_COLOR`): **multiline input** via a `"""`
       fenced block or a trailing-backslash continuation, assembled into one agent

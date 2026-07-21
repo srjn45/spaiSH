@@ -61,6 +61,12 @@ type Config struct {
 	// prompt for this agent instance. It is set on delegated sub-agents to inject
 	// a profile's focused system prompt without changing the top-level agent.
 	SystemPromptOverride string
+
+	// ModelOverride, when non-empty, is passed as Request.Model in every provider
+	// Stream call inside the agent loop. It selects the "strong" model for
+	// reasoning turns when task-based routing is configured. An empty string keeps
+	// the provider's own configured model, preserving all existing behaviour.
+	ModelOverride string
 }
 
 // ConfirmFunc is called when a tier-gated tool call needs user approval.
@@ -196,7 +202,7 @@ func (a *Agent) loop(ctx context.Context, req *protocol.AgentRequest, sess *sess
 	}()
 
 	for iter := 0; iter < maxIter; iter++ {
-		evCh, err := a.provider.Stream(ctx, ai.Request{System: system, Messages: messages, Tools: toolSpecs})
+		evCh, err := a.provider.Stream(ctx, ai.Request{System: system, Messages: messages, Tools: toolSpecs, Model: a.config.ModelOverride})
 		if err != nil {
 			send(ctx, ch, protocol.Response{Type: "error", Content: fmt.Sprintf("AI error: %v", err)})
 			send(ctx, ch, protocol.Response{Type: "done"})
