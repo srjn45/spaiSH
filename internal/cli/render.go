@@ -24,6 +24,7 @@ const (
 	ansiReset  = "\033[0m"
 	ansiDim    = "\033[2m"
 	ansiBold   = "\033[1m"
+	ansiUnbold = "\033[22m" // turn off bold/faint, keeping any active color
 	ansiCyan   = "\033[36m"
 	ansiRed    = "\033[31m"
 	ansiGreen  = "\033[32m"
@@ -171,6 +172,12 @@ func (r *Renderer) Flush() {
 // isTerminal reports whether f refers to a terminal (vs. a pipe or file).
 func isTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
+}
+
+// colorEnabled reports whether ANSI styling should be emitted for f: it must be a
+// terminal and NO_COLOR must be unset (https://no-color.org).
+func colorEnabled(f *os.File) bool {
+	return isTerminal(f) && os.Getenv("NO_COLOR") == ""
 }
 
 // renderTodoList formats a todo_write checklist for terminal output. On a TTY,
@@ -329,14 +336,15 @@ const diffContextLines = 3
 
 // printDiffPreview renders a unified diff of the proposed file change before the
 // y/N prompt, when the confirm request carries one. Output is colored only when
-// stdout is a terminal; piped output gets a plain, ANSI-free diff. A no-op edit
-// (identical content) produces no diff and prints nothing.
+// stdout is a terminal and NO_COLOR is unset; piped output or NO_COLOR gets a
+// plain, ANSI-free diff. A no-op edit (identical content) produces no diff and
+// prints nothing.
 func printDiffPreview(req protocol.ConfirmRequest) {
 	if !req.ShowDiff {
 		return
 	}
 	lines := computeDiff(req.OldContent, req.NewContent, diffContextLines)
-	out := renderDiff(lines, isTerminal(os.Stdout))
+	out := renderDiff(lines, colorEnabled(os.Stdout))
 	if out == "" {
 		return
 	}
