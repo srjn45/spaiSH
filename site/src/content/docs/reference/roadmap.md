@@ -70,8 +70,6 @@ _All Tier 2 items shipped — see Recently completed._
 
 ### Tier 3 — polish
 
-- [ ] Model routing — a cheap model for classification/safety, an
-      expensive one for reasoning.
 - [ ] REPL polish — multiline input, fuzzy `@file` completion, and
       syntax-highlighted diffs.
 - [ ] Session memory — auto-learned facts persisted across sessions,
@@ -79,6 +77,11 @@ _All Tier 2 items shipped — see Recently completed._
 
 ## Recently completed
 
+- [x] Model routing — task-based model selection: a cheap/fast model
+      (`model_small`) for summarisation and auto-compact calls, and a
+      reasoning-capable model (`model_strong`) for the main agent
+      tool-calling loop. Configured via `[routing]` in `spaid.toml`; both
+      fields default to empty, preserving all existing behaviour unchanged.
 - [x] Pre/post-tool-use hooks — user-configured shell commands run around tool
       execution via `[[hooks]]` in `spaid.toml`. A `pre_tool` hook can refuse an
       already-approved tool call (a non-zero exit blocks it and its stderr

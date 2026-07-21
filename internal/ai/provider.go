@@ -101,7 +101,14 @@ type Provider interface {
 // CompleteText drives a provider's Stream with no tools and concatenates the
 // streamed text. It is the shared implementation behind text-only Complete.
 func CompleteText(ctx context.Context, p Provider, system string, messages []Message) (string, error) {
-	ch, err := p.Stream(ctx, Request{System: system, Messages: messages})
+	return CompleteTextRouted(ctx, p, system, messages, "")
+}
+
+// CompleteTextRouted is like CompleteText but passes model as Request.Model so
+// the provider uses that model instead of its configured default. An empty
+// model string is a no-op (falls through to the provider's configured model).
+func CompleteTextRouted(ctx context.Context, p Provider, system string, messages []Message, model string) (string, error) {
+	ch, err := p.Stream(ctx, Request{System: system, Messages: messages, Model: model})
 	if err != nil {
 		return "", err
 	}

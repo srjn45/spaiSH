@@ -92,3 +92,49 @@ func TestModelOptionsListsBoth(t *testing.T) {
 		t.Error("expected anthropic to be the active option by default")
 	}
 }
+
+// TestNewWiresModelRouter verifies that model_small and model_strong from
+// [routing] are carried into the App's router field, which is used to pass
+// model overrides into agent.Config.ModelOverride and cheap completion calls.
+func TestNewWiresModelRouter(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Routing.ModelSmall = "claude-haiku-4-5"
+	cfg.Routing.ModelStrong = "claude-opus-4-8"
+	name, model := cloudNameModel(cfg)
+	a := &App{
+		cfg:         cfg,
+		cloud:       ai.NewAnthropicProvider("sk-test", model, ai.RetryConfig{}),
+		local:       ai.NewLocalProvider("http://127.0.0.1:0", "qwen", ai.RetryConfig{}),
+		localModel:  "qwen",
+		activeName:  name,
+		activeModel: model,
+		router: ai.ModelRouter{
+			Small:  cfg.Routing.ModelSmall,
+			Strong: cfg.Routing.ModelStrong,
+		},
+	}
+	if got := a.router.ModelFor(ai.TaskKindCheap); got != "claude-haiku-4-5" {
+		t.Errorf("router.ModelFor(Cheap) = %q, want claude-haiku-4-5", got)
+	}
+	if got := a.router.ModelFor(ai.TaskKindReasoning); got != "claude-opus-4-8" {
+		t.Errorf("router.ModelFor(Reasoning) = %q, want claude-opus-4-8", got)
+	}
+	if !a.router.Enabled() {
+		t.Error("router.Enabled() = false, want true when both models are set")
+	}
+}
+
+// TestNewRouterZeroValueWhenUnconfigured verifies that an App built from config
+// without model_small/model_strong has a zero-value router (routing disabled).
+func TestNewRouterZeroValueWhenUnconfigured(t *testing.T) {
+	a := newTestApp()
+	if a.router.Enabled() {
+		t.Error("router.Enabled() = true, want false when routing is unconfigured")
+	}
+	if got := a.router.ModelFor(ai.TaskKindCheap); got != "" {
+		t.Errorf("router.ModelFor(Cheap) = %q, want empty", got)
+	}
+	if got := a.router.ModelFor(ai.TaskKindReasoning); got != "" {
+		t.Errorf("router.ModelFor(Reasoning) = %q, want empty", got)
+	}
+}

@@ -559,3 +559,30 @@ func TestAgentInjectsStdinAndQuery(t *testing.T) {
 		t.Errorf("query message = %q, want explain", msgs[len(msgs)-1].Content)
 	}
 }
+
+// TestAgentModelOverridePassedToStream verifies that Config.ModelOverride is
+// forwarded as Request.Model in every Stream call inside the agent loop. This is
+// the wiring that enables task-based model routing for reasoning turns.
+func TestAgentModelOverridePassedToStream(t *testing.T) {
+	p := &scriptedProvider{turns: [][]ai.Event{
+		{textEv("done"), doneEv()},
+	}}
+	cfg := agent.Config{ModelOverride: "claude-opus-4-8-override"}
+	run(t, p, cfg, alwaysApprove, tools.NewRegistry(), "hi")
+
+	if p.lastReq.Model != "claude-opus-4-8-override" {
+		t.Errorf("Request.Model = %q, want claude-opus-4-8-override", p.lastReq.Model)
+	}
+}
+
+// TestAgentModelOverrideEmptyMeansProviderDefault verifies that an empty
+// ModelOverride passes "" as Request.Model, which every provider interprets as
+// "use the configured default" — preserving backward-compatible behaviour.
+func TestAgentModelOverrideEmptyMeansProviderDefault(t *testing.T) {
+	p := &scriptedProvider{turns: [][]ai.Event{{textEv("ok"), doneEv()}}}
+	run(t, p, agent.Config{}, alwaysApprove, tools.NewRegistry(), "hi")
+
+	if p.lastReq.Model != "" {
+		t.Errorf("Request.Model = %q, want empty (use provider default)", p.lastReq.Model)
+	}
+}

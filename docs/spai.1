@@ -357,11 +357,21 @@ to build from source instead of downloading a prebuilt binary.
 .SH FILES
 .TP
 .I ~/.config/spaish/spaid.toml
-Main configuration file: provider, model, MCP server list, and permission
-policy.
+Main configuration file: provider, model, routing, MCP server list, and
+permission policy.
 Written by
 .B spai init
 and editable by hand.
+Notable
+.B [routing]
+keys:
+.B model_small
+(cheap/fast model for summarisation and auto-compact calls) and
+.B model_strong
+(reasoning-capable model for the main agent tool-calling loop).
+Both default to empty, which uses the
+.B [provider]
+model for everything.
 .TP
 .I ~/.local/share/spaish/sessions/
 Per-session subdirectories.

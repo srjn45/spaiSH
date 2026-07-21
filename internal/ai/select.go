@@ -5,6 +5,44 @@ import (
 	"strings"
 )
 
+// TaskKind classifies the nature of an LLM call for model routing.
+type TaskKind int
+
+const (
+	// TaskKindReasoning is the main agent tool-calling loop (the default).
+	TaskKindReasoning TaskKind = iota
+	// TaskKindCheap covers summarisation, auto-compact, and other text-only calls.
+	TaskKindCheap
+)
+
+// ModelRouter selects a per-task model override from the [routing] config
+// section. The zero value disables routing: ModelFor always returns "" so all
+// providers fall through to their own configured model. Safe for concurrent use
+// (immutable after construction).
+type ModelRouter struct {
+	Small  string // model for TaskKindCheap; "" = provider default
+	Strong string // model for TaskKindReasoning; "" = provider default
+}
+
+// ModelFor returns the model override for kind, or "" when that kind is not
+// configured. A "" return means "use the provider's own model" — callers may
+// pass it directly to ai.Request.Model without branching.
+func (r ModelRouter) ModelFor(kind TaskKind) string {
+	switch kind {
+	case TaskKindCheap:
+		return r.Small
+	case TaskKindReasoning:
+		return r.Strong
+	}
+	return ""
+}
+
+// Enabled reports whether any routing is configured. It is false on the zero
+// value, matching the "identical to today" default.
+func (r ModelRouter) Enabled() bool {
+	return r.Small != "" || r.Strong != ""
+}
+
 // ProviderSet holds the available providers and the routing preference used to
 // pick one. It replaces the selection logic that used to live in internal/router.
 type ProviderSet struct {

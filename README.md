@@ -174,6 +174,19 @@ budget per request. Set it in `[provider]` of `spaid.toml`
 (`reasoning_effort = "medium"`); leave it empty (the default) to omit the
 field, which is safe for all models including non-reasoning ones.
 
+**Task-based model routing** lets you use a cheap/fast model for
+summarisation and auto-compact calls while keeping a reasoning-capable model
+for the main agent loop. Configure it in the optional `[routing]` section:
+
+```toml
+[routing]
+model_small  = "claude-haiku-4-5"  # cheap text-only calls (compact, auto-compact)
+model_strong = "claude-opus-4-8"   # reasoning / tool-calling agent turns
+```
+
+Leave both unset (the default) to use the `[provider]` model for everything,
+which is identical to the pre-routing behaviour.
+
 Transient provider failures (HTTP 429 or 5xx) are retried automatically with
 exponential backoff and jitter, honouring a server `Retry-After` header, across
 all providers. Tune it in the optional `[retry]` section of `spaid.toml`
