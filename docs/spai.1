@@ -275,9 +275,22 @@ Press
 .B Tab
 after
 .B @
-to complete file and directory names; a trailing
+for fuzzy completion: a few distinctive letters
+.RB ( @rndr )
+match files anywhere in the working tree and the full relative path is inserted.
+A trailing
 .B /
 marks a directory you can descend into.
+.SS Multi-line input
+On an interactive terminal, compose a message spanning several lines two ways:
+open a
+.B \(dq\(dq\(dq
+fence on its own line and close it with another
+.BR \(dq\(dq\(dq ,
+or end a line with a single
+.B \e
+to continue onto the next. Both assemble into a single agent turn. Piped or
+redirected input is unaffected and submits each line as-is.
 .SS Key bindings
 .TP
 .B Tab

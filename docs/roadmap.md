@@ -81,13 +81,19 @@ _All Tier 2 items shipped — see Recently completed._
       block configured command patterns.
 - [ ] Model routing — a cheap model for classification/safety, an
       expensive one for reasoning.
-- [ ] REPL polish — multiline input, fuzzy `@file` completion, and
-      syntax-highlighted diffs.
 - [ ] Session memory — auto-learned facts persisted across sessions,
       beyond the static `SPAI.md`.
 
 ## Recently completed
 
+- [x] REPL polish — three interactive niceties, each degrading to today's plain
+      behaviour off a TTY (or under `NO_COLOR`): **multiline input** via a `"""`
+      fenced block or a trailing-backslash continuation, assembled into one agent
+      turn; **fuzzy `@file` completion** that subsequence-matches a bounded,
+      cached walk of the working tree and inserts the full relative path; and
+      **syntax-highlighted diffs** that keep the add/remove polarity colors, bold
+      the leading `+`/`-` marker, and honour the `NO_COLOR` convention. All three
+      are invisible to piped/non-interactive use.
 - [x] Named specialized subagents — the `delegate` tool now accepts an optional
       `profile` argument (`reviewer`, `tester`, `general`) that runs the
       sub-agent with a focused system prompt and a restricted tool allowlist.

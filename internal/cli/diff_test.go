@@ -116,3 +116,37 @@ func TestRenderDiffNonTTYPlain(t *testing.T) {
 		t.Errorf("color=true diff should contain ANSI codes, got %q", colored)
 	}
 }
+
+func TestRenderDiff_colorMarkers(t *testing.T) {
+	lines := computeDiff("a\nold\nc\n", "a\nnew\nc\n", 3)
+	out := renderDiff(lines, true)
+
+	if !strings.Contains(out, "\033[") {
+		t.Fatalf("expected ANSI in colored diff, got %q", out)
+	}
+	// The leading +/- markers are bolded (ansiBold) then unbolded (ansiUnbold).
+	if !strings.Contains(out, ansiBold) {
+		t.Errorf("expected bold marker code %q in output, got %q", ansiBold, out)
+	}
+	// Additions carry green, deletions red.
+	if !strings.Contains(out, ansiGreen) {
+		t.Errorf("expected green add code %q, got %q", ansiGreen, out)
+	}
+	if !strings.Contains(out, ansiRed) {
+		t.Errorf("expected red del code %q, got %q", ansiRed, out)
+	}
+	// The bold applies to the marker rune specifically: bold-on, '+', unbold.
+	if !strings.Contains(out, ansiBold+"+"+ansiUnbold) {
+		t.Errorf("expected bolded '+' marker (%s+%s), got %q", ansiBold, ansiUnbold, out)
+	}
+	if !strings.Contains(out, ansiBold+"-"+ansiUnbold) {
+		t.Errorf("expected bolded '-' marker (%s-%s), got %q", ansiBold, ansiUnbold, out)
+	}
+}
+
+func TestEmphasizeMarker_empty(t *testing.T) {
+	// An empty line must not panic on the line[:1] slice.
+	if got := emphasizeMarker("", ansiGreen); got != ansiGreen+ansiReset {
+		t.Errorf("emphasizeMarker(\"\") = %q, want %q", got, ansiGreen+ansiReset)
+	}
+}
