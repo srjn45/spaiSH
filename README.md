@@ -113,8 +113,15 @@ Run `spai` with no arguments for a multi-turn session. Slash commands:
 Drop a Markdown file in `.spai/commands/` to add your own slash command: `.spai/commands/review.md` becomes `/review`. The file body is a prompt template — `$ARGUMENTS` expands to everything after the command and `$1`, `$2`, … to individual arguments — that runs as a normal agent turn (inheriting `SPAI.md` context and the usual permission gating).
 
 Reference a file with `@path` to include its contents — press `Tab` after `@`
-to complete file and directory names. `Shift-Tab` cycles the execution mode.
-`Ctrl+C` (or `Esc`) cancels the current turn; `Ctrl+D` exits.
+for fuzzy completion: type a few distinctive letters (`@rndr`) and it matches
+files anywhere in the working tree, inserting the full relative path.
+`Shift-Tab` cycles the execution mode. `Ctrl+C` (or `Esc`) cancels the current
+turn; `Ctrl+D` exits.
+
+Compose a multi-line message two ways: open a `"""` fence on its own line and
+close it with another `"""`, or end a line with a single `\` to continue onto
+the next. Both assemble into one agent turn. (Multi-line input and colored diffs
+are terminal-only; piped input and `NO_COLOR` fall back to plain behavior.)
 
 ### Modes
 

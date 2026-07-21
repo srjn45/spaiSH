@@ -118,6 +118,39 @@ func TestRendererFlushEmitsRemainder(t *testing.T) {
 	}
 }
 
+// colorEnabled must be false whenever NO_COLOR is set, regardless of whether the
+// fd is a terminal (https://no-color.org). Under test stdout/stderr are pipes, so
+// the TTY branch is exercised by the diff-marker test via the color bool directly;
+// here we pin the NO_COLOR override.
+func TestColorEnabled_NoColorForcesFalse(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	if colorEnabled(os.Stdout) {
+		t.Error("NO_COLOR set must disable color on stdout")
+	}
+	if colorEnabled(os.Stderr) {
+		t.Error("NO_COLOR set must disable color on stderr")
+	}
+}
+
+// With NO_COLOR set, the diff preview printed before a confirm prompt must be
+// ANSI-free — the plain unified-diff fallback.
+func TestPrintDiffPreview_noColorIsPlain(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	req := protocol.ConfirmRequest{
+		ShowDiff:   true,
+		OldContent: "a\nold\nc\n",
+		NewContent: "a\nnew\nc\n",
+	}
+	out := captureStdout(t, func() { printDiffPreview(req) })
+	if strings.Contains(out, "\033[") {
+		t.Errorf("NO_COLOR preview must be ANSI-free, got %q", out)
+	}
+	// Still a valid prefixed unified diff.
+	if !strings.Contains(out, "-old") || !strings.Contains(out, "+new") {
+		t.Errorf("expected plain unified diff content, got %q", out)
+	}
+}
+
 // makeLines builds a newline-joined block of n numbered lines ("line 1\n…").
 func makeLines(n int) string {
 	parts := make([]string, n)

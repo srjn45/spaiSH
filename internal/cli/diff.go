@@ -214,8 +214,10 @@ func computeDiff(oldText, newText string, ctxLines int) []diffLine {
 }
 
 // renderDiff formats diff lines into text. When color is true, additions are
-// green, deletions red, and hunk headers cyan; otherwise the output is a plain,
-// uncolored unified diff (used for non-TTY output). Returns "" for no lines.
+// green and deletions red — each with its leading +/- marker additionally bold so
+// change polarity reads at a glance — and hunk headers cyan; otherwise the output
+// is a plain, uncolored unified diff (used for non-TTY / NO_COLOR output).
+// Returns "" for no lines.
 func renderDiff(lines []diffLine, color bool) string {
 	if len(lines) == 0 {
 		return ""
@@ -226,9 +228,9 @@ func renderDiff(lines []diffLine, color bool) string {
 		if color {
 			switch l.kind {
 			case diffAdd:
-				s = green(s)
+				s = emphasizeMarker(s, ansiGreen)
 			case diffDel:
-				s = red(s)
+				s = emphasizeMarker(s, ansiRed)
 			case diffHunk:
 				s = cyan(s)
 			}
@@ -237,4 +239,15 @@ func renderDiff(lines []diffLine, color bool) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// emphasizeMarker colors line with the given ANSI color and additionally bolds
+// its single leading marker rune (the '+' or '-' already carried as line's first
+// byte), so the payload text stays plain-weight while the polarity marker stands
+// out. The color spans the whole line; only the marker toggles bold on then off.
+func emphasizeMarker(line, color string) string {
+	if line == "" {
+		return color + ansiReset
+	}
+	return color + ansiBold + line[:1] + ansiUnbold + line[1:] + ansiReset
 }
